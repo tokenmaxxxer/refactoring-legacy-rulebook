@@ -1,0 +1,5 @@
+{
+  "name": "proposal-norm",
+  "description": "Mechanically enforces the refactoring-legacy phase-1 proposal norm (issue #1, Approved): six required elements in every docs/issue-<n>/proposals/*.md write. Owns issue-1's phase-1 proposal-norm methodology only.",
+  "author": { "name": "Jung Jiwon & Lee Jongkwan" }
+}

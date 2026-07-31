@@ -1,0 +1,5 @@
+{
+  "name": "refactoring-steps",
+  "description": "Mechanically enforces Fowler's catalog-driven refactoring methodology (Refactoring: Improving the Design of Existing Code, catalog at refactoring.com/catalog) plus the strangler-fig escape hatch for large structural migrations. Denies the phase-2 record unless it names catalog steps and a before/after equivalence note, and denies any src/** structural edit unless the record already carries a non-empty characterization_tests_path field (data dependency on the characterization-tests plugin's durable record field — enforces 'characterize before refactor'). Owns Fowler's refactoring-catalog methodology only.",
+  "author": { "name": "Jung Jiwon & Lee Jongkwan" }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "characterization-tests",
+  "description": "Mechanically enforces Feathers' characterization-testing methodology (Working Effectively with Legacy Code) on this role's phase-2 record write: denies the record unless it names characterization-test evidence and the seam used to introduce it, and sets a durable characterization_tests_path field the refactoring-steps plugin's ordering check depends on. Owns characterization testing only.",
+  "author": { "name": "Jung Jiwon & Lee Jongkwan" }
+}
