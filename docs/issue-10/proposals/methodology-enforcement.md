@@ -1,8 +1,19 @@
-# Issue #10 — Phase 1 proposal: mechanically enforcing the issue-1 methodology norms
+# Issue #10 — Phase 1 proposal (revised per approver feedback): a plugin set enforcing the issue-1 methodology norms
 
 Status: proposal only — not executed, not approved. **Phase 1 ONLY per the
 invoking prompt: this PR stops at the proposal; no `Approve` is solicited
 or assumed, and no code below is implemented in this PR.**
+
+**Revision note**: this replaces the prior single-gate-machine design after
+an approver `FEEDBACK` comment on PR #11 required a structural rewrite —
+not a single deepened directive/gate, but a **plugin set**: one independent
+plugin per adopted methodology (mirroring how core ships `freelunch` and
+`scout` as separate, self-contained, marketplace-registered plugins, each
+at freelunch-level completeness), with the phase-1 proposal norm and
+phase-2 deliverable norm themselves expressed as *combinations* of those
+plugins rather than as prose directives. The plugin list — name, owning
+methodology, components, combination relationship — is the proposal's
+required core, per the feedback.
 
 ## Context
 
@@ -10,211 +21,141 @@ Issue-1 (Approved, `docs/issue-1/proposals/proposal.md`) established this
 role's methodology doctrine — a phase-1 proposal norm (six required
 elements) and a phase-2 deliverable norm (four required components) — and
 reflected it into `directive.sh`'s `PRODUCES` string and `README.md`'s
-`## Doctrine` section. Issue-1 phase 2 explicitly stopped there, naming an
-"Enforcement gap": nothing mechanically checks that a proposal or record
-actually contains the required elements, and the `refactoring-legacy-
-progress-gate.sh` slot wired in `hooks.json` has never had a file behind
-it. Issue #10 asks this repo to close that gap to the standard
-`implementation-rulebook` already demonstrates: directive depth, a
-methodology gate that machine-verifies required `produces` elements
-(state-tracked where the methodology has an ordering constraint), gate
-tests, and agents/checklists if the methodology implies a repeated
-procedure. The current-state survey is at
-`docs/issue-10/reports/refactoring-legacy/survey.md`; the scout sweep
-grounding the design below is at
-`docs/issue-10/reports/refactoring-legacy/scout-brief.md`.
+`## Doctrine` section. It named an "Enforcement gap": nothing mechanically
+checks that a proposal or record actually contains the required elements.
+Issue #10 asks this repo to close that gap. The current-state survey is at
+`docs/issue-10/reports/refactoring-legacy/survey.md`; the scout sweep is at
+`docs/issue-10/reports/refactoring-legacy/scout-brief.md` (both unchanged
+by this revision — the gap and the scouted `pricing-rulebook/pricing/
+hooks/methodology-gate.sh` structural reference still apply; only the
+shape of the design built on top of them changes).
 
-## (a) Directive deepening
+Reference architecture for "plugin", taken from
+`tokenmaxxxer-core/.claude-plugin/marketplace.json` and
+`tokenmaxxxer-core/freelunch/`: a plugin is a self-contained directory
+(`<plugin>/.claude-plugin/plugin.json` naming it, plus any of `hooks/`,
+`agents/`, `workflows/`, `README.md` it needs), registered as one entry in
+this repo's own `.claude-plugin/marketplace.json` alongside the existing
+`refactoring-legacy` entry.
 
-`directive.sh` currently supplies four unstructured strings via
-`core_role_directive`. This proposal adopts extending each facet to name
-concrete steps, judgment criteria, and prohibitions, per issue #10's ask
-that a one-line summary is insufficient:
+## Plugin list (the design's core)
 
-- **`YOU DECIDE`** (unchanged in substance, sharpened in framing): the
-  judgment call is factual/technical ("does this transformation preserve
-  observable behavior"), not a preference — the directive should state
-  the test for this explicitly: *if the change could be described without
-  the word "still," it is not a refactor.*
-- **`PRODUCES`** — deepen from the current three-noun-with-parenthetical
-  form into an ordered procedure the directive states outright:
-  (1) capture behavior first (characterization test, Feathers) — **before**
-  touching structure; (2) decompose into small named steps (Fowler),
-  each independently completable and independently leaving the system
-  working; (3) run the captured tests after every step, not only at the
-  end; (4) write the equivalence note citing which tests ran and passed
-  identically pre/post. **Prohibition, stated explicitly in the
-  directive**: no step may bundle an observable-behavior change; any such
-  change discovered mid-work is handed off, not folded in.
-- **`HAND-OFF`** — deepen from the bare "→ implementation" into the
-  judgment criterion for *when* to hand off: the moment any step under
-  consideration would make a previously-passing characterization test
-  fail *by design* (not by bug) rather than *by accident* — the former is
-  a feature change misfiled as refactoring, the latter is a regression to
-  fix within the same step.
-- **`USE_WHEN`** — unchanged; already sufficiently concrete for a
-  four-string directive facet.
+Two adopted methodologies (issue-1's proposal norm, issue-1's deliverable
+norm) map to two independent plugins — not one gate machine:
 
-Mechanically, this proposal defers the exact rendering to phase 2, since
-(mirroring issue-1's own finding) whether `core_role_directive`'s call
-shape accepts a longer structured value or needs a parallel field requires
-checking `core/hooks/lib/role-directive.sh` at phase-2 time — not
+| Plugin | Owning methodology | Components | Registered as |
+|---|---|---|---|
+| `proposal-norm` | Issue-1's phase-1 proposal norm (six required elements: survey ref, scout-brief ref w/ Sources, named methodology citation, considered-vs-chosen structure, Out-of-scope, phase-2 verification criteria) | `hooks/methodology-gate.sh` (scope: `docs/issue-<n>/proposals/**`, fail-closed, kill switch `PROPOSAL_NORM_GATE_OFF=1`); `hooks/hooks.json` (`PreToolUse`/`Write\|Edit\|MultiEdit`); `hooks/tests/run-gate-tests.sh` | new marketplace.json entry `proposal-norm`, `source: ./proposal-norm` |
+| `deliverable-norm` | Issue-1's phase-2 deliverable norm (three components: characterization-test evidence, named-step refactoring plan, before/after equivalence note) plus the test-first ordering constraint | `hooks/methodology-gate.sh` (scope: `docs/issue-<n>/reports/refactoring-legacy.md`, fail-closed, kill switch `DELIVERABLE_NORM_GATE_OFF=1`); a second check inside the same file (or a sibling hook) denying a `src/**` structural edit unless the current record already carries a non-empty `characterization_tests_path` field — the record itself is the durable state marker, no separate state file, per the scouted `coding-progress-gate.sh` durable-state precedent; `hooks/hooks.json`; `hooks/tests/run-gate-tests.sh`; `CHECKLIST.md` (the four `PRODUCES` steps as literal checkable items — a checklist, not an agent, since the procedure is linear with no branching judgment beyond what the directive states) | new marketplace.json entry `deliverable-norm`, `source: ./deliverable-norm` |
+
+Each plugin is independently loadable/disable-able (its own kill switch,
+its own `hooks.json`, its own test suite) and owns exactly one
+methodology — no plugin checks both proposal and record shape. This
+mirrors `freelunch` and `scout` being separate plugins in core even though
+both fire in the same session lifecycle.
+
+### Combination relationship
+
+The two phase-1/phase-2 norms are not new artifacts to design — they
+**are** the plugin combinations already implied by contract v3 plus
+issue-1:
+
+- **Phase-1 proposal norm** = `proposal-norm` plugin alone, composed with
+  the already-existing core `scout` plugin (whose brief the gate checks
+  for) — the gate is downstream verification of what `scout` and the
+  session's own survey step produce; `proposal-norm` does not duplicate
+  scout's logic, it checks scout's *output artifact* is referenced.
+- **Phase-2 deliverable norm** = `deliverable-norm` plugin alone, composed
+  with core's existing `warrant` plugin's landing-time hunt (out of scope
+  to change) — `deliverable-norm`'s ordering check (test-first) is the
+  piece contract v3 does not otherwise supply; the rest of phase-2's shape
+  (branch, PR, Approve gating) stays owned by core's `core` plugin,
+  untouched.
+- Both new plugins share nothing but the `write_scope` convention already
+  established by `core`'s per-role contract table — no shared mutable
+  state between them, so they are genuinely independent units, matching
+  the "no shared-line coupling → separate units" default this session
+  itself works under.
+
+## Directive deepening (unchanged content, now plugin-scoped)
+
+`directive.sh`'s four facets deepen exactly as previously designed — see
+Appendix — but the deepened `PRODUCES` text is understood as documentation
+of what `proposal-norm`/`deliverable-norm` *mechanically* check, not a
+separate freestanding norm. Rendering mechanics (whether
+`core_role_directive`'s call shape accepts a longer value) remain deferred
+to phase 2 per `core/hooks/lib/role-directive.sh`'s actual signature, not
 guessed here.
 
-## (b) Methodology gate — machine-verifying issue-1's required elements
+## Gate tests
 
-**Design, adapted from the scouted `pricing-rulebook/pricing/hooks/
-methodology-gate.sh` shape (see scout-brief "Adopt/skip") — referenced for
-its structural pattern only, not copied; the concrete regex/keyword logic
-below is derived fresh for this role's own required elements, per the
-canon-reference-only constraint.**
+Each plugin carries its own `hooks/tests/run-gate-tests.sh`, exercising
+its own `methodology-gate.sh` as a real subprocess (throwaway `git init`
+repo, synthetic `PreToolUse` JSON on stdin, assert exit 0/2), scoped only
+to its own methodology:
 
-A new `refactoring-legacy/hooks/methodology-gate.sh`, wired to
-`PreToolUse`/`Write|Edit|MultiEdit` in `hooks.json` (replacing the dangling
-`refactoring-legacy-progress-gate.sh` entry, or added alongside it,
-pending what phase 2 finds the entry was originally meant to be — see Out
-of scope), would:
+`proposal-norm` cases: all six elements present → allow; each of the six
+missing individually → deny (one case per element); write to an unrelated
+path → allow (no-op scope check).
 
-1. **Scope by path regex** to this role's own write surfaces only:
-   `docs/issue-<n>/proposals/.*refactoring.*\.md` (phase-1 proposals) and
-   `docs/issue-<n>/reports/refactoring-legacy\.md` (phase-2 record) — a
-   no-op `exit 0` for every other write, per must-be 2.
-2. **Resolve resulting content** for `Write`/`Edit`/`MultiEdit` exactly as
-   the scouted pattern does (substitute `old_string`→`new_string` against
-   current file content; deny with a clear message if the resulting
-   content cannot be determined) — per must-be 3.
-3. **Check required elements, fail-closed** (`exit 2` on any missing
-   element, `exit 0` only when all required elements for that document
-   type are present):
-   - On a **proposal** write: presence of a survey reference
-     (`reports/refactoring-legacy/survey.md` or equivalent path mention),
-     a scout-brief reference *with* a `Sources:` list (or an explicit,
-     stated skip-record per the scout-directive's own skip-condition
-     rule), a named methodology + citation (author/work — e.g.
-     "Fowler"/"Feathers" or another named source), an options-vs-decision
-     structure (headings or prose containing both "considered" and
-     "chosen"/"adopted" language), an explicit "Out of scope" section, and
-     phase-2 verification criteria language.
-   - On a **record** (phase-2 deliverable) write: presence of the three
-     issue-1 (b) components by name/content —
-     characterization-test evidence (a test file path or explicit
-     "characterization test" mention), a refactoring plan expressed as an
-     enumerated/named sequence (not a single paragraph — checked
-     structurally, e.g. requiring at least two distinguishable named
-     steps), and a before/after equivalence note that names which tests
-     ran and states they passed both before and after.
-4. **Fail closed on internal error** — wrap the check in a trap/exception
-   handler that denies (`exit 2`) rather than allows on any unexpected
-   script failure, per must-be 1.
-5. **Kill switch**: `REFACTORING_LEGACY_METHODOLOGY_GATE_OFF=1`, per
-   must-be 5.
-
-### State tracking for the one real ordering constraint
-
-Issue-1's doctrine states characterization tests must exist **before**
-any structural change — an ordering constraint a single stateless
-PreToolUse invocation cannot verify by itself. Per the scouted durable-
-state precedent (`coding-progress-gate.sh` inspecting another role's
-record file's `loop_state` at commit time, rather than the hook
-remembering anything across invocations), this proposal adopts:
-
-- A required record field, `characterization_tests_path`, written into
-  the phase-2 record the first time a characterization test is captured
-  — the record itself *is* the durable state marker, no separate state
-  file needed.
-- A **second gate** (or an added check inside the same
-  `methodology-gate.sh`), scoped to `Write|Edit` under this role's
-  `write_scope` (`src/**`, `test/**`), that denies a structural edit under
-  `src/**` unless the current record
-  (`docs/issue-<n>/reports/refactoring-legacy.md`) already contains a
-  non-empty `characterization_tests_path` field. This operationalizes
-  test-first as: *the record must already claim a captured test before
-  the gate allows touching the source it protects* — a presence/ordering
-  check against durable on-disk state, not a git-history-timestamp
-  archaeology attempt (which issue-1 already flagged as likely
-  infeasible, and which this proposal does not re-attempt).
-- This is honestly weaker than a cryptographic guarantee that the test was
-  genuinely written and run first (an author could write a hollow
-  `characterization_tests_path` value before writing the actual test) —
-  stated explicitly as a residual limitation, not silently glossed over.
-
-## (c) Gate tests
-
-Per the scouted `implementation-rulebook` pattern
-(`tests/run-gate-tests.sh`, `deny-only-check.sh`, `parse-check.sh`), a new
-`tests/run-gate-tests.sh` at this repo's root would exercise
-`methodology-gate.sh` as a real subprocess: spin up a throwaway `git init`
-repo per case, pipe a synthetic `{"tool_name":"Write","tool_input":
-{"file_path":...,"content":...}}` payload on stdin, assert exit code
-0 (allow) vs. 2 (deny). Planned cases:
-
-- Proposal write with all six required elements present → allow.
-- Proposal write missing the scout-brief `Sources:` list → deny.
-- Proposal write missing a named methodology citation → deny.
-- Record write with all three deliverable components present → allow.
-- Record write with an empty/missing `characterization_tests_path` →
-  deny.
-- Record write whose refactoring plan is a single undifferentiated
-  paragraph (no distinguishable named steps) → deny.
-- A write to an unrelated path (e.g. another role's record) → allow
-  (no-op scope check — must not fire outside this role's surfaces).
-- A structural edit under `src/**` attempted before
-  `characterization_tests_path` is recorded → deny (ordering gate).
-- Same edit attempted after the field is present → allow.
-
-## (d) Agents / checklist
-
-Issue-1's deliverable norm implies one repeated procedure: capture →
-decompose → (step, re-test)×N → equivalence note. This proposal adopts a
-**checklist file** (`refactoring-legacy/CHECKLIST.md` or an equivalent
-doc under this role's own tree), not a full agent definition — the
-procedure is a linear sequence with no branching judgment beyond what the
-directive already states, so a checklist is proportionate; introducing a
-subagent for a four-step linear procedure would be scope beyond what the
-methodology actually requires (per the "don't build more than the task
-needs" default). The checklist would enumerate exactly the four
-`PRODUCES` steps from (a) above as literal checkable items, so an
-executing session (or a reviewer) can tick through them without
-re-deriving the sequence from prose each time.
+`deliverable-norm` cases: all three components present → allow; each
+missing individually → deny; empty/missing `characterization_tests_path`
+→ deny; a `src/**` structural edit attempted before that field is
+recorded → deny; the same edit after the field is present → allow; write
+to an unrelated path → allow.
 
 ## Out of scope
 
-- Implementing `methodology-gate.sh`, the second ordering gate,
-  `tests/run-gate-tests.sh`, `CHECKLIST.md`, or any `hooks.json`/
-  `directive.sh` edit — all deferred to phase 2 pending Approve, per the
-  invoking prompt's explicit phase-1-only instruction.
-- Resolving what the long-dangling `refactoring-legacy-progress-gate.sh`
-  `hooks.json` entry was originally meant to contain, or whether phase 2
-  should rename/replace it vs. add a second entry — a phase-2 investigation
-  (git blame / issue history on that entry, not repeated here since no
-  new information was found beyond issue-1/2/5's identical prior flag).
-- A cryptographically or git-history-verified test-first ordering
-  guarantee — explicitly not attempted, per (b)'s stated residual
-  limitation and issue-1's own prior finding that this is likely
-  infeasible with the tooling available.
-- Any change to `core`'s `record-fields-gate.sh`, `role-directive.sh`, or
-  its per-role contract table — this proposal builds a local, role-scoped
-  gate entirely within this rulebook, exactly per the constraint that
-  canon scripts are referenced, never copied or modified.
+- Implementing either plugin's `methodology-gate.sh`, `hooks.json`,
+  `run-gate-tests.sh`, `CHECKLIST.md`, or `.claude-plugin/plugin.json`, or
+  the `marketplace.json` edits registering them — all deferred to phase 2
+  pending Approve.
+- Resolving the long-dangling `refactoring-legacy-progress-gate.sh`
+  `hooks.json` entry — a phase-2 investigation, not repeated here.
+- A cryptographically/git-history-verified test-first ordering guarantee —
+  explicitly not attempted; `deliverable-norm`'s ordering check is a
+  presence/ordering check against durable on-disk state only, stated as a
+  residual limitation, matching the prior design's stated limit.
+- Any change to `core`'s `record-fields-gate.sh`, `role-directive.sh`, its
+  per-role contract table, `freelunch`, `scout`, or `warrant` themselves —
+  this proposal adds two new *role-scoped* plugins that reference core's
+  existing plugins by name/behavior, never modifying or vendoring them.
 - `docs/specs/approvers.md` — untouched.
-- Re-litigating issue-1's adopted doctrine content itself — this proposal
-  is purely mechanical enforcement of what issue-1 already decided, not a
-  re-derivation of the methodology.
+- Re-litigating issue-1's adopted doctrine content — this proposal is
+  mechanical enforcement of what issue-1 already decided.
 
 ## Phase-2 verification criteria
 
-Once Approved, phase 2 should be verifiable by: (1) `tests/
-run-gate-tests.sh` exists at repo root and exits 0 (all cases pass) when
-run directly; (2) a proposal or record write missing a required element,
-attempted live in a session, is observably denied (exit 2 surfaces as a
-blocked tool call); (3) `directive.sh`'s rendered `SessionStart` output
-visibly contains the deepened per-facet content from (a), confirmed by
-reading the actual rendered directive text (not just the source
-strings) if `core_role_directive`'s call shape supports it; (4)
-`README.md`'s `## Doctrine` section is updated to replace the
-"Enforcement gap, stated plainly" paragraph with an accurate description
-of what is now mechanically enforced vs. any residual gap that remains
-(per (b)'s stated limitation on ordering guarantees).
+Once Approved, phase 2 should be verifiable by: (1) both
+`proposal-norm/.claude-plugin/plugin.json` and
+`deliverable-norm/.claude-plugin/plugin.json` exist, and both are
+registered as entries in this repo's `.claude-plugin/marketplace.json`
+alongside the existing `refactoring-legacy` entry; (2) each plugin's own
+`hooks/tests/run-gate-tests.sh` exits 0 (all cases pass) when run
+directly; (3) a proposal or record write missing a required element,
+attempted live in a session, is observably denied by the owning plugin's
+gate; (4) `README.md`'s `## Doctrine` section is updated to name the two
+plugins as what now mechanically enforces the norms, replacing the
+"Enforcement gap" paragraph, with the residual test-first-ordering
+limitation stated plainly.
+
+## Appendix: directive deepening detail (carried over from the prior design)
+
+- **`YOU DECIDE`**: state the test explicitly — *if the change could be
+  described without the word "still," it is not a refactor.*
+- **`PRODUCES`**: an ordered procedure — (1) capture behavior first
+  (characterization test, Feathers) before touching structure; (2)
+  decompose into small named steps (Fowler), each independently
+  completable and leaving the system working; (3) run captured tests
+  after every step, not only at the end; (4) write the equivalence note
+  citing which tests ran and passed identically pre/post. Prohibition: no
+  step may bundle an observable-behavior change; any such change
+  discovered mid-work is handed off, not folded in.
+- **`HAND-OFF`**: the judgment criterion for *when* — the moment a step
+  under consideration would make a previously-passing characterization
+  test fail *by design* (feature change misfiled as refactoring) rather
+  than *by accident* (regression to fix within the same step).
+- **`USE_WHEN`**: unchanged, already sufficiently concrete.
 
 ## References
 
@@ -224,3 +165,7 @@ of what is now mechanically enforced vs. any residual gap that remains
   enforces)
 - `docs/issue-1/reports/refactoring-legacy.md` (phase-2 record naming the
   enforcement gap this proposal closes)
+- `tokenmaxxxer-core/.claude-plugin/marketplace.json`,
+  `tokenmaxxxer-core/freelunch/` (reference architecture for the
+  plugin-set shape this revision adopts, per the approver's explicit
+  freelunch/scout comparison — referenced for structure only, not copied)
