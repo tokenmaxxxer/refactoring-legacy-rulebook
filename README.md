@@ -12,21 +12,42 @@ generated as skeleton scaffolding by issue-167.
 
 ## Install
 
+This rulebook now references core canon (issue #2) instead of vendoring its
+own copies of the warrant-hunt agent and the three role-agnostic gates.
+Install `core` and `warrant` (plus `terse`, `freelunch`, `scout`) from the
+`tokenmaxxxer-core` marketplace alongside this rulebook's own plugin:
+
 ```
 claude plugin marketplace add tokenmaxxxer/refactoring-legacy-rulebook
 claude plugin install refactoring-legacy
+
+claude plugin marketplace add tokenmaxxxer/core
+claude plugin install core
+claude plugin install terse
+claude plugin install freelunch
+claude plugin install scout
+claude plugin install warrant
 ```
 
 ## Layout
 
 - `refactoring-legacy/.claude-plugin/plugin.json` — plugin manifest
 - `refactoring-legacy/hooks/hooks.json` — SessionStart + PreToolUse wiring
-- `refactoring-legacy/hooks/directive.sh` — SessionStart role directive
-- `refactoring-legacy/hooks/record-fields-gate.sh` — this role's record required-field gate
-- `refactoring-legacy/hooks/trailer-gate.sh` — commit `Subject: issue-<n>` trailer gate
-- `refactoring-legacy/hooks/handbook-trigger-gate.sh` — s21 handbook-sync gate
-- `refactoring-legacy/agents/warrant-hunter.md` — rotating-stance hunt agent
+  (only this role's own dangling `refactoring-legacy-progress-gate.sh` entry
+  remains; the three role-agnostic gates now fire from core's own
+  `core/hooks/hooks.json` for every plugin install)
+- `refactoring-legacy/hooks/directive.sh` — SessionStart role directive, now a
+  stub that sources core's `hooks/lib/role-directive.sh` and supplies only
+  this role's four unique values
+- `refactoring-legacy/hooks/tests/stub-check.sh` — verbatim copy of core's
+  drift-recurrence check; run against `refactoring-legacy/` to confirm no
+  core canon file has been re-vendored locally
 - `docs/specs/approvers.md` — Approve-authority allowlist (see below)
+
+The warrant-hunt agent (`agents/warrant-hunter.md`) and the three gates
+(`trailer-gate.sh`, `record-fields-gate.sh`, `handbook-trigger-gate.sh`) are
+no longer vendored here — see core canon (`core/agents` via the `warrant`
+plugin, `core/hooks/*-gate.sh`) instead.
 
 This is scaffolding, not a finished rulebook: fill in doctrine detail,
 handoff enforcement, and any role-specific progress gate before treating
