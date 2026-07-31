@@ -8,6 +8,21 @@
       "name": "refactoring-legacy",
       "source": "./refactoring-legacy",
       "description": "The refactoring-legacy role on contract v3 (issue-160 round-4 promotion). Decides: 기존 코드의 관찰 가능한 동작을 바꾸지 않고 안전하게 재구조화할 수 있는가."
+    },
+    {
+      "name": "proposal-norm",
+      "source": "./proposal-norm",
+      "description": "Mechanically enforces the refactoring-legacy phase-1 proposal norm (issue #1, Approved): six required elements in every docs/issue-<n>/proposals/*.md write. Owns issue-1's phase-1 proposal-norm methodology only."
+    },
+    {
+      "name": "characterization-tests",
+      "source": "./characterization-tests",
+      "description": "Mechanically enforces Feathers' characterization-testing methodology (Working Effectively with Legacy Code) on this role's phase-2 record write: denies the record unless it names characterization-test evidence and the seam used to introduce it, and sets a durable characterization_tests_path field the refactoring-steps plugin's ordering check depends on. Owns characterization testing only."
+    },
+    {
+      "name": "refactoring-steps",
+      "source": "./refactoring-steps",
+      "description": "Mechanically enforces Fowler's catalog-driven refactoring methodology (Refactoring: Improving the Design of Existing Code, catalog at refactoring.com/catalog) plus the strangler-fig escape hatch for large structural migrations. Denies the phase-2 record unless it names catalog steps and a before/after equivalence note, and denies any src/** structural edit unless the record already carries a non-empty characterization_tests_path field. Owns Fowler's refactoring-catalog methodology only."
     }
   ]
 }

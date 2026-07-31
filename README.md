@@ -35,17 +35,37 @@ and confirms they pass identically before and after; (4) an explicit scope
 boundary stating no behavior/feature change is bundled in — anything that
 would change observable behavior is handed off to `implementation` instead.
 
-**Enforcement gap, stated plainly**: `core`'s `record-fields-gate.sh` checks
-only the generic contract §20 fields (what-was-done / why / upstream-basis /
-loop_state / open-findings) plus a configurable terminal-states list — core's
-contract table (section 2) hardcodes required fields per role for its own
-nine canonical roles only, with no mechanism for a rulebook outside that
-table (this one included) to register custom required fields. The four
-deliverable components above are therefore enforced by this doctrine
-document and by review, not by an automated gate; a role-specific progress
-gate remains the dangling `refactoring-legacy-progress-gate.sh` entry in
-`hooks.json` (pre-existing gap, unimplemented) and would be the natural home
-for a future mechanical presence check if one is built.
+**Mechanical enforcement (issue #10)**: the norms above are no longer
+review-only. Three independent plugins, one per adopted methodology (cut by
+methodology, not by phase, per `docs/issue-10/proposals/methodology-enforcement.md`),
+each self-contained (own `plugin.json`, `hooks/methodology-gate.sh`,
+`hooks/hooks.json`, `hooks/tests/run-gate-tests.sh`, own kill switch),
+registered in `.claude-plugin/marketplace.json`:
+
+- **`proposal-norm`** — gates every `docs/issue-<n>/proposals/*.md` write
+  (`PreToolUse`/`Write|Edit|MultiEdit`, fail-closed) for the six required
+  phase-1 elements listed above. Kill switch: `PROPOSAL_NORM_GATE_OFF=1`.
+- **`characterization-tests`** — gates the phase-2 record
+  (`docs/issue-<n>/reports/refactoring-legacy.md`) for characterization-test
+  evidence and a named seam (Feathers), and requires a non-empty
+  `characterization_tests_path` field — the record itself is the durable
+  state marker `refactoring-steps` reads. Kill switch:
+  `CHARACTERIZATION_TESTS_GATE_OFF=1`.
+- **`refactoring-steps`** — gates the same record for named Fowler-catalog
+  steps and a before/after equivalence note (plus a stable-seam requirement
+  when a strangler-fig migration is named), and separately denies any
+  `src/**` structural write unless `characterization_tests_path` is already
+  set — the mechanism enforcing "characterize before refactor". Kill
+  switch: `REFACTORING_STEPS_GATE_OFF=1`.
+
+Each plugin is independently loadable/disable-able and owns exactly one
+methodology; `refactoring-steps` reading `characterization-tests`'s record
+field is a data dependency only, not shared code. Residual limitation
+(unchanged from the proposal): this is a presence/ordering check against
+durable on-disk state, not a cryptographically or git-history-verified
+test-first guarantee. A role-specific `refactoring-legacy-progress-gate.sh`
+entry in `hooks.json` remains dangling (pre-existing gap, unrelated to this
+enforcement — see Open findings in `docs/issue-10/reports/refactoring-legacy.md`).
 
 ## Install
 
@@ -57,6 +77,9 @@ Install `core` and `warrant` (plus `terse`, `freelunch`, `scout`) from the
 ```
 claude plugin marketplace add tokenmaxxxer/refactoring-legacy-rulebook
 claude plugin install refactoring-legacy
+claude plugin install proposal-norm
+claude plugin install characterization-tests
+claude plugin install refactoring-steps
 
 claude plugin marketplace add tokenmaxxxer/core
 claude plugin install core
@@ -68,6 +91,9 @@ claude plugin install warrant
 
 ## Layout
 
+- `proposal-norm/`, `characterization-tests/`, `refactoring-steps/` — the
+  three methodology-enforcement plugins (issue #10); see `## Doctrine`
+  above for what each gates and their kill switches
 - `refactoring-legacy/.claude-plugin/plugin.json` — plugin manifest
 - `refactoring-legacy/hooks/hooks.json` — SessionStart + PreToolUse wiring
   (only this role's own dangling `refactoring-legacy-progress-gate.sh` entry
