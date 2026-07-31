@@ -39,9 +39,9 @@ claude plugin install warrant
 - `refactoring-legacy/hooks/directive.sh` — SessionStart role directive, now a
   stub that sources core's `hooks/lib/role-directive.sh` and supplies only
   this role's four unique values
-- `refactoring-legacy/hooks/tests/stub-check.sh` — verbatim copy of core's
-  drift-recurrence check; run against `refactoring-legacy/` to confirm no
-  core canon file has been re-vendored locally
+- `stub-check.sh` — no longer vendored here (issue #5, core canon #69). Run
+  by reference against the core-installed copy instead:
+  `"${CORE_PLUGIN_ROOT:-$CLAUDE_PLUGIN_ROOT/../core}"/hooks/tests/stub-check.sh refactoring-legacy`
 - `docs/specs/approvers.md` — Approve-authority allowlist (see below)
 
 The warrant-hunt agent (`agents/warrant-hunter.md`) and the three gates
