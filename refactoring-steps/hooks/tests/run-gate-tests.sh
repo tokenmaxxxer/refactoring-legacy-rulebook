@@ -237,6 +237,14 @@ print(json.dumps({"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ src/
 ')"
 run_case "Bash-tool write to src/** path is denied" 2 "$j" "$d"
 
+# 18. Missing core: CLAUDE_PLUGIN_ROOT_CORE points at a nonexistent path and
+# no sibling ../../core is present (issue-16 defect 1) -> guarded source
+# fails closed, exit 2.
+d="$(new_tmpdir)"
+mkdir -p "$d/src"
+j="$(json_write "src/foo.py" "def foo(): pass" "$d")"
+run_case "missing core: unresolvable CLAUDE_PLUGIN_ROOT_CORE fails closed" 2 "$j" "$d" "CLAUDE_PLUGIN_ROOT_CORE=/nonexistent-core-path-xyz"
+
 echo "----"
 if [ "$FAIL_COUNT" -gt 0 ]; then
   echo "RESULT: $FAIL_COUNT test(s) FAILED"
