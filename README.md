@@ -35,37 +35,65 @@ and confirms they pass identically before and after; (4) an explicit scope
 boundary stating no behavior/feature change is bundled in — anything that
 would change observable behavior is handed off to `implementation` instead.
 
-**Mechanical enforcement (issue #10)**: the norms above are no longer
-review-only. Three independent plugins, one per adopted methodology (cut by
-methodology, not by phase, per `docs/issue-10/proposals/methodology-enforcement.md`),
-each self-contained (own `plugin.json`, `hooks/methodology-gate.sh`,
-`hooks/hooks.json`, `hooks/tests/run-gate-tests.sh`, own kill switch),
-registered in `.claude-plugin/marketplace.json`:
+**Mechanical enforcement (issue #10, gate-house A+ remediation issue #13)**:
+the norms above are no longer review-only. Three independent plugins, one
+per adopted methodology (cut by methodology, not by phase, per
+`docs/issue-10/proposals/methodology-enforcement.md`), each self-contained
+(own `plugin.json`, `hooks/methodology-gate.sh`, `hooks/hooks.json`,
+`hooks/tests/run-gate-tests.sh`, own kill switch), registered in
+`.claude-plugin/marketplace.json`. Each gate now sources core's shared
+`gate-lib.sh`/`gate-lib.py` (core issue #72, reference-adopted per
+`docs/issue-13/proposals/proposal.md` — never vendored) for trap-at-top
+fail-closed, the fixed kill-switch convention (an unrecognized value stays
+ACTIVE, not disabled), JSON-parse-or-deny, absolute/`./`-prefixed path
+normalization, and full `Write`/`Edit`/`MultiEdit` reconstruction honoring
+per-edit `replace_all`; the semantic content each gate checks (which
+elements, which catalog terms) stays this rulebook's own logic:
 
 - **`proposal-norm`** — gates every `docs/issue-<n>/proposals/*.md` write
-  (`PreToolUse`/`Write|Edit|MultiEdit`, fail-closed) for the six required
-  phase-1 elements listed above. Kill switch: `PROPOSAL_NORM_GATE_OFF=1`.
+  (`PreToolUse`/`Write|Edit|MultiEdit|Bash`, fail-closed) for the six
+  required phase-1 elements listed above, checked structurally: each
+  element must appear under a markdown heading matching a small alias set
+  (or the top-level title's own front matter for survey/scout-brief/
+  citation), not as a bare substring anywhere in the document; the ADR
+  shape requires >=2 of Context/Options/Decision/Consequences as heading
+  *titles*, not body mentions. Kill switch: `PROPOSAL_NORM_GATE_OFF=1`.
 - **`characterization-tests`** — gates the phase-2 record
-  (`docs/issue-<n>/reports/refactoring-legacy.md`) for characterization-test
-  evidence and a named seam (Feathers), and requires a non-empty
-  `characterization_tests_path` field — the record itself is the durable
-  state marker `refactoring-steps` reads. Kill switch:
-  `CHARACTERIZATION_TESTS_GATE_OFF=1`.
-- **`refactoring-steps`** — gates the same record for named Fowler-catalog
-  steps and a before/after equivalence note (plus a stable-seam requirement
-  when a strangler-fig migration is named), and separately denies any
-  `src/**` structural write unless `characterization_tests_path` is already
-  set — the mechanism enforcing "characterize before refactor". Kill
-  switch: `REFACTORING_STEPS_GATE_OFF=1`.
+  (`docs/issue-<n>/reports/refactoring-legacy.md`, `Write|Edit|MultiEdit|Bash`)
+  for characterization-test evidence and a heading naming the seam
+  (Feathers) — not a bare "seam" mention — plus an adjacent (within 3
+  lines) `characterization_tests_path:`/`test_run: PASS (<command>)` pair;
+  the path must resolve (via `gate_normalize_path`) to a file that exists
+  on disk and is non-empty. `test_run: PASS` is a self-reported assertion
+  the gate cannot execute-verify at write time — see Verification criteria
+  in `docs/issue-13/proposals/proposal.md` for the phase-2 check that
+  re-runs it. Kill switch: `CHARACTERIZATION_TESTS_GATE_OFF=1`.
+- **`refactoring-steps`** — gates the same record (`Write|Edit|MultiEdit|Bash`)
+  for a named Fowler-catalog step as a list item under a "refactoring
+  steps" heading (the bare word "catalog" alone no longer satisfies this —
+  every other term names a specific, identifiable step) and a before/after
+  equivalence note under an "equivalence" heading naming a concrete
+  test-shaped identifier (plus a stable-seam requirement when a
+  strangler-fig migration is named), and separately denies any `src/**`
+  structural write (`Write|Edit|MultiEdit|Bash`) unless
+  `characterization_tests_path` is already set in the record — the
+  mechanism enforcing "characterize before refactor". Kill switch:
+  `REFACTORING_STEPS_GATE_OFF=1`.
 
 Each plugin is independently loadable/disable-able and owns exactly one
 methodology; `refactoring-steps` reading `characterization-tests`'s record
-field is a data dependency only, not shared code. Residual limitation
-(unchanged from the proposal): this is a presence/ordering check against
-durable on-disk state, not a cryptographically or git-history-verified
+field is a data dependency only, not shared code. A `Bash`-tool write
+reaching an in-scope path (e.g. `sed -i`, `cat >`) is denied outright by
+all three gates — such a write is opaque to reconstruction, so the gate
+refuses rather than approximating its resulting content. Residual
+limitation (unchanged from the original proposal): this is a
+presence/structure check against durable on-disk state and a self-reported
+`test_run:` claim, not a cryptographically or git-history-verified
 test-first guarantee. A role-specific `refactoring-legacy-progress-gate.sh`
 entry in `hooks.json` remains dangling (pre-existing gap, unrelated to this
 enforcement — see Open findings in `docs/issue-10/reports/refactoring-legacy.md`).
+Each plugin's `hooks/` directory passes
+`core/hooks/tests/compliance-check.sh` clean.
 
 ## Install
 

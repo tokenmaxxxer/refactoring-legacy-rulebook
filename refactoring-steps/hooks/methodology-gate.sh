@@ -1,169 +1,217 @@
 #!/usr/bin/env bash
+# PreToolUse gate: mechanically enforces refactoring-steps methodology
+# (Fowler's catalog + before/after equivalence) on phase-2 refactoring-legacy
+# report writes, and blocks src/** structural edits until a
+# characterization_tests_path has been recorded (characterize before
+# refactor). Migrated onto core's gate-house standard (issue-72,
+# reference-adopted per issue-13's precondition — see
+# docs/issue-13/proposals/proposal.md).
+#
+# Kill switch: export REFACTORING_STEPS_GATE_OFF=1
+. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh"
+gate_trap_fail_closed
 set -uo pipefail
 
-if [ "${REFACTORING_STEPS_GATE_OFF:-}" = "1" ]; then
+gate_kill_switch_active "${REFACTORING_STEPS_GATE_OFF:-}" || { trap - EXIT; exit 0; }
+
+payload="$(cat 2>/dev/null || true)"
+
+tool_name="$(printf '%s' "$payload" | GATE_LIB_PY="$GATE_LIB_PY" python3 -c '
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("gate_lib", os.environ["GATE_LIB_PY"])
+gate_lib = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate_lib)
+def deny(m):
+    sys.stderr.write("refactoring-steps gate: DENY — " + m + "\n"); sys.exit(2)
+event = gate_lib.gate_parse_json_or_deny(sys.stdin.read(), deny)
+print(event.get("tool_name") or "")
+')"
+
+if [ "$tool_name" = "Bash" ]; then
+  command_str="$(printf '%s' "$payload" | python3 -c '
+import json, sys
+try:
+    event = json.loads(sys.stdin.read())
+except Exception:
+    print("")
+    sys.exit(0)
+print((event.get("tool_input") or {}).get("command") or "")
+')"
+  while IFS= read -r tok; do
+    [ -n "$tok" ] || continue
+    case "$tok" in
+      *docs/issue-*/reports/refactoring-legacy.md|*src/*|src/*)
+        echo "refactoring-steps gate: DENY — a Bash-tool write toward $tok cannot have its resulting content reconstructed by this gate; use Write/Edit/MultiEdit, or run this Bash command outside src/** and docs/issue-<n>/reports/refactoring-legacy.md" >&2
+        exit 2
+        ;;
+    esac
+  done <<EOF
+$(gate_bash_write_targets "$command_str")
+EOF
   exit 0
 fi
 
-STDIN_JSON="$(cat)"
+PY_OUTPUT="$(printf '%s' "$payload" | GATE_LIB_PY="$GATE_LIB_PY" python3 -c '
+import importlib.util, os, posixpath, re, subprocess, sys
 
-PARSED="$(python3 - "$STDIN_JSON" <<'PYEOF' 2>"${TMPDIR:-/tmp}/refactoring_steps_gate_pyerr"
-import json, sys
+spec = importlib.util.spec_from_file_location("gate_lib", os.environ["GATE_LIB_PY"])
+gate_lib = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate_lib)
 
-try:
-    data = json.loads(sys.argv[1])
-except Exception:
-    print("PARSE_ERROR")
+
+def deny(msg):
+    sys.stderr.write("refactoring-steps gate: DENY — " + msg + "\n")
+    sys.exit(2)
+
+
+event = gate_lib.gate_parse_json_or_deny(sys.stdin.read(), deny)
+tool_name = event.get("tool_name", "")
+tool_input = event.get("tool_input") or {}
+cwd = event.get("cwd") or os.getcwd()
+file_path = tool_input.get("file_path")
+
+if not file_path or not isinstance(file_path, str):
+    deny("tool_input.file_path missing")
+
+root = os.path.abspath(cwd)
+rel = gate_lib.gate_normalize_path(root, file_path)
+if rel is None:
     sys.exit(0)
 
-tool_name = data.get("tool_name", "")
-tool_input = data.get("tool_input", {}) or {}
-cwd = data.get("cwd", "")
-file_path = tool_input.get("file_path", "")
+# --- BRANCH 1: the phase-2 record itself ---------------------------------
+if re.search(r"^docs/issue-[0-9]+/reports/refactoring-legacy\.md$", rel):
+    resolved_path = posixpath.join(root.replace("\\", "/"), rel)
+    existing = ""
+    if os.path.isfile(resolved_path):
+        try:
+            with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
+                existing = f.read()
+        except OSError:
+            existing = None
 
-if not file_path:
-    print("PARSE_ERROR")
+    new_text, ok = gate_lib.gate_reconstruct_write(tool_name, tool_input, existing)
+    if not ok:
+        deny(
+            "cannot determine the resulting content of this %s on %s from "
+            "the tool_input given; refusing rather than guessing" % (tool_name, rel)
+        )
+
+    effective = new_text
+    low = effective.lower()
+
+    HEADING_RE = re.compile(r"^(#{1,3})\s+(.*)$", re.M)
+    headings = [(m.start(), len(m.group(1)), m.group(2).strip()) for m in HEADING_RE.finditer(effective)]
+
+    def section_text(idx):
+        start, level, _ = headings[idx]
+        body_start = effective.find("\n", start)
+        body_start = body_start + 1 if body_start >= 0 else len(effective)
+        end = len(effective)
+        for j in range(idx + 1, len(headings)):
+            if headings[j][1] <= level:
+                end = headings[j][0]
+                break
+        return effective[body_start:end]
+
+    steps_heading_re = re.compile(r"refactoring steps|리팩터링\s?단계", re.I)
+    # "catalog" alone is dropped: every other term already names a specific,
+    # identifiable step; a bare mention of "catalog" names nothing.
+    catalog_terms = ["extract method", "extract function", "rename", "inline",
+                      "move method", "move function", "refactoring.com/catalog",
+                      "strangler"]
+    item_re = re.compile(r"^\s*[-*]\s+(.*)$", re.M)
+
+    has_catalog = False
+    for i, (_, _, title) in enumerate(headings):
+        if steps_heading_re.search(title):
+            for m in item_re.finditer(section_text(i)):
+                item = m.group(1).lower()
+                if any(t in item for t in catalog_terms):
+                    has_catalog = True
+                    break
+        if has_catalog:
+            break
+
+    equiv_heading_re = re.compile(r"equivalence|동등성", re.I)
+    test_ref_re = re.compile(r"[./\w-]*/[\w.-]+|(?:[Tt]est_[\w.]+|[\w.]*[Tt]est\b)")
+    has_equivalence = False
+    for i, (_, _, title) in enumerate(headings):
+        if equiv_heading_re.search(title):
+            if test_ref_re.search(section_text(i)):
+                has_equivalence = True
+                break
+
+    reasons = []
+    if not has_catalog:
+        reasons.append(
+            "no catalog refactoring step found as a list item under a "
+            "\"refactoring steps\" heading (e.g. Extract Method, Rename, "
+            "Inline, Move Method, strangler)"
+        )
+    if not has_equivalence:
+        reasons.append(
+            "no before/after equivalence note found under an "
+            "\"equivalence\"/동등성 heading naming a concrete test (path-like "
+            "or test_/Test-prefixed identifier)"
+        )
+
+    seam_re = re.compile(r"\bseam\b", re.I)
+    if "strangler" in low and not seam_re.search(low):
+        reasons.append("strangler-fig mentioned but no stable seam described (\"seam\")")
+
+    if reasons:
+        deny("phase-2 record missing required content: " + "; ".join(reasons))
     sys.exit(0)
 
-new_text_parts = []
-if tool_name == "Write":
-    new_text_parts.append(tool_input.get("content", "") or "")
-elif tool_name == "Edit":
-    new_text_parts.append(tool_input.get("new_string", "") or "")
-elif tool_name == "MultiEdit":
-    for e in (tool_input.get("edits", []) or []):
-        new_text_parts.append(e.get("new_string", "") or "")
+# --- BRANCH 2: src/** structural edit ------------------------------------
+if re.match(r"^src/", rel) or "/src/" in ("/" + rel):
+    branch_dir = cwd if cwd else "."
+    try:
+        out = subprocess.run(["git", "-C", branch_dir, "symbolic-ref", "--short", "HEAD"],
+                              capture_output=True, text=True)
+        current_branch = out.stdout.strip() if out.returncode == 0 else ""
+        if not current_branch:
+            out = subprocess.run(["git", "-C", branch_dir, "rev-parse", "--abbrev-ref", "HEAD"],
+                                  capture_output=True, text=True)
+            current_branch = out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:
+        current_branch = ""
 
-new_text = "\n".join(new_text_parts)
+    m = re.match(r"^issue-([0-9]+)/", current_branch)
+    if not m:
+        deny("cannot determine issue number from branch name to locate phase-2 record")
+    issue_num = m.group(1)
 
-print("OK")
-print(file_path)
-print(cwd)
-print(json.dumps(new_text))
-PYEOF
-)"
+    try:
+        out = subprocess.run(["git", "-C", branch_dir, "rev-parse", "--show-toplevel"],
+                              capture_output=True, text=True)
+        repo_root = out.stdout.strip() if out.returncode == 0 else ""
+    except Exception:
+        repo_root = ""
+    if not repo_root:
+        deny("cannot determine repo root")
 
-PY_STATUS=$?
+    record_path = posixpath.join(repo_root.replace("\\", "/"), "docs/issue-%s/reports/refactoring-legacy.md" % issue_num)
+    if os.path.isfile(record_path):
+        with open(record_path, "r", encoding="utf-8", errors="replace") as f:
+            record_text = f.read()
+        if re.search(r"characterization_tests_path:\s*\S+", record_text):
+            sys.exit(0)
+    deny(
+        "structural src/** edit blocked: no characterization_tests_path "
+        "recorded yet in docs/issue-%s/reports/refactoring-legacy.md "
+        "(characterize before refactor)" % issue_num
+    )
 
-if [ $PY_STATUS -ne 0 ]; then
-  echo "refactoring-steps gate: DENY — failed to parse PreToolUse JSON" >&2
-  exit 2
-fi
+sys.exit(0)
+' 2>&1 1>/dev/null)"
+PY_EXIT=$?
 
-FIRST_LINE="$(printf '%s\n' "$PARSED" | sed -n '1p')"
-
-if [ "$FIRST_LINE" != "OK" ]; then
-  echo "refactoring-steps gate: DENY — failed to parse PreToolUse JSON or missing file_path" >&2
-  exit 2
-fi
-
-FILE_PATH="$(printf '%s\n' "$PARSED" | sed -n '2p')"
-CWD="$(printf '%s\n' "$PARSED" | sed -n '3p')"
-NEW_TEXT_JSON="$(printf '%s\n' "$PARSED" | sed -n '4,$p')"
-
-if [ -z "$FILE_PATH" ]; then
-  echo "refactoring-steps gate: DENY — missing file_path" >&2
-  exit 2
-fi
-
-# BRANCH 1: phase-2 record
-if printf '%s' "$FILE_PATH" | grep -Eq 'docs/issue-[0-9]+/reports/refactoring-legacy\.md$'; then
-  RESOLVED_PATH="$FILE_PATH"
-  case "$FILE_PATH" in
-    /*) RESOLVED_PATH="$FILE_PATH" ;;
-    *)
-      if [ -n "$CWD" ]; then
-        RESOLVED_PATH="$CWD/$FILE_PATH"
-      else
-        RESOLVED_PATH="$FILE_PATH"
-      fi
-      ;;
-  esac
-
-  ON_DISK=""
-  if [ -f "$RESOLVED_PATH" ]; then
-    ON_DISK="$(cat "$RESOLVED_PATH" 2>/dev/null || true)"
-  fi
-
-  RESULT="$(python3 - "$ON_DISK" "$NEW_TEXT_JSON" <<'PYEOF2' 2>"${TMPDIR:-/tmp}/refactoring_steps_gate_pyerr2"
-import json, sys, re
-
-on_disk = sys.argv[1]
-new_text = json.loads(sys.argv[2])
-
-effective = on_disk + "\n" + new_text
-low = effective.lower()
-
-catalog_terms = ["extract method", "extract function", "rename", "inline",
-                 "move method", "move function", "refactoring.com/catalog", "catalog"]
-has_catalog = any(t in low for t in catalog_terms)
-
-has_equivalence = ("equivalence" in low) or ("동등성" in effective)
-
-reasons = []
-if not has_catalog:
-    reasons.append("no catalog refactoring step name found (e.g. Extract Method, Rename, Inline, Move Method, refactoring.com/catalog, or 'catalog')")
-if not has_equivalence:
-    reasons.append("no before/after equivalence note found ('equivalence' or Korean '동등성')")
-
-if "strangler" in low:
-    if "seam" not in low:
-        reasons.append("strangler-fig mentioned but no stable seam described ('seam')")
-
-if reasons:
-    print("DENY")
-    for r in reasons:
-        print(r)
-else:
-    print("OK")
-PYEOF2
-)"
-  PY2_STATUS=$?
-  if [ $PY2_STATUS -ne 0 ]; then
-    echo "refactoring-steps gate: DENY — internal error evaluating phase-2 record" >&2
-    exit 2
-  fi
-
-  RFIRST="$(printf '%s\n' "$RESULT" | sed -n '1p')"
-  if [ "$RFIRST" = "OK" ]; then
-    exit 0
+if [ $PY_EXIT -ne 0 ]; then
+  if [ -n "$PY_OUTPUT" ]; then
+    echo "$PY_OUTPUT" >&2
   else
-    echo "refactoring-steps gate: DENY — phase-2 record missing required content:" >&2
-    printf '%s\n' "$RESULT" | sed -n '2,$p' >&2
-    exit 2
+    echo "refactoring-steps gate: DENY — internal error running methodology gate" >&2
   fi
+  exit 2
 fi
 
-# BRANCH 2: src/** structural edit
-if printf '%s' "$FILE_PATH" | grep -Eq '(^src/|/src/)'; then
-  BRANCH_DIR="$CWD"
-  if [ -z "$BRANCH_DIR" ]; then
-    BRANCH_DIR="."
-  fi
-
-  CURRENT_BRANCH="$(git -C "$BRANCH_DIR" symbolic-ref --short HEAD 2>/dev/null || git -C "$BRANCH_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  ISSUE_NUM="$(printf '%s' "$CURRENT_BRANCH" | sed -nE 's#^issue-([0-9]+)/.*#\1#p')"
-
-  if [ -z "$ISSUE_NUM" ]; then
-    echo "refactoring-steps gate: DENY — cannot determine issue number from branch name to locate phase-2 record" >&2
-    exit 2
-  fi
-
-  REPO_ROOT="$(git -C "$BRANCH_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
-  if [ -z "$REPO_ROOT" ]; then
-    echo "refactoring-steps gate: DENY — cannot determine repo root" >&2
-    exit 2
-  fi
-
-  RECORD_PATH="$REPO_ROOT/docs/issue-$ISSUE_NUM/reports/refactoring-legacy.md"
-
-  if [ -f "$RECORD_PATH" ] && grep -Eq 'characterization_tests_path:[[:space:]]*[^[:space:]]+' "$RECORD_PATH" 2>/dev/null; then
-    exit 0
-  else
-    echo "refactoring-steps gate: DENY — structural src/** edit blocked: no characterization_tests_path recorded yet in docs/issue-$ISSUE_NUM/reports/refactoring-legacy.md (characterize before refactor)" >&2
-    exit 2
-  fi
-fi
-
-# BRANCH 3: out of scope
 exit 0
