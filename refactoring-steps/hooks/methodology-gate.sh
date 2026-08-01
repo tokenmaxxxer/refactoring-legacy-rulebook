@@ -8,7 +8,7 @@
 # docs/issue-13/proposals/proposal.md).
 #
 # Kill switch: export REFACTORING_STEPS_GATE_OFF=1
-. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh"
+. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh" || { echo "methodology-gate.sh: cannot source gate-lib.sh" >&2; exit 2; }
 gate_trap_fail_closed
 set -uo pipefail
 

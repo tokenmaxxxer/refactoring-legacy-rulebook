@@ -89,9 +89,17 @@ refuses rather than approximating its resulting content. Residual
 limitation (unchanged from the original proposal): this is a
 presence/structure check against durable on-disk state and a self-reported
 `test_run:` claim, not a cryptographically or git-history-verified
-test-first guarantee. A role-specific `refactoring-legacy-progress-gate.sh`
-entry in `hooks.json` remains dangling (pre-existing gap, unrelated to this
-enforcement — see Open findings in `docs/issue-10/reports/refactoring-legacy.md`).
+test-first guarantee, and a `compliance-check.sh`-clean record is itself a
+point-in-time claim against a specific core commit, not a standing
+guarantee (issue #16); re-audits should re-run it against current core
+`main` rather than trust an old record. The role-specific
+`refactoring-legacy-progress-gate.sh` entry in `hooks.json` (previously
+dangling — see Open findings in `docs/issue-10/reports/refactoring-legacy.md`)
+now has real backing code (issue #16): it fails closed on missing core and
+otherwise allows, since no per-step methodology check is designed for it
+yet; `refactoring-legacy/hooks/tests/manifest-integrity-check.sh` is a
+permanent regression guard that hard-fails if any plugin's `hooks.json`
+ever again references a command file absent from disk.
 Each plugin's `hooks/` directory passes
 `core/hooks/tests/compliance-check.sh` clean.
 
@@ -123,10 +131,15 @@ claude plugin install warrant
   three methodology-enforcement plugins (issue #10); see `## Doctrine`
   above for what each gates and their kill switches
 - `refactoring-legacy/.claude-plugin/plugin.json` — plugin manifest
-- `refactoring-legacy/hooks/hooks.json` — SessionStart + PreToolUse wiring
-  (only this role's own dangling `refactoring-legacy-progress-gate.sh` entry
-  remains; the three role-agnostic gates now fire from core's own
-  `core/hooks/hooks.json` for every plugin install)
+- `refactoring-legacy/hooks/hooks.json` — SessionStart + PreToolUse wiring;
+  the `Bash`-matcher `refactoring-legacy-progress-gate.sh` entry now has
+  real backing code (issue #16, see `## Doctrine` above); the three
+  role-agnostic gates fire from core's own `core/hooks/hooks.json` for
+  every plugin install
+- `refactoring-legacy/hooks/tests/run-gate-tests.sh`,
+  `refactoring-legacy/hooks/tests/manifest-integrity-check.sh` — tests for
+  the progress gate plus the repo-wide ghost-command regression guard
+  (issue #16)
 - `refactoring-legacy/hooks/directive.sh` — SessionStart role directive, now a
   stub that sources core's `hooks/lib/role-directive.sh` and supplies only
   this role's four unique values
@@ -140,6 +153,7 @@ The warrant-hunt agent (`agents/warrant-hunter.md`) and the three gates
 no longer vendored here — see core canon (`core/agents` via the `warrant`
 plugin, `core/hooks/*-gate.sh`) instead.
 
-Doctrine detail is now filled in (`## Doctrine` above, issue #1); handoff
-enforcement and a role-specific progress gate remain open — see the
-enforcement gap noted above before treating those as load-bearing.
+Doctrine detail is now filled in (`## Doctrine` above, issue #1); the
+role-specific progress gate now has real (minimal) backing code (issue
+#16) — full per-step progress-tracking methodology enforcement for it
+remains open, unchanged from issue-13's Out-of-scope call.

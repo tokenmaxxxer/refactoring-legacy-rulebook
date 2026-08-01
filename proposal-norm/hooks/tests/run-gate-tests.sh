@@ -247,6 +247,11 @@ print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat > docs/issue-9
 run_raw "Bash-tool write to in-scope path is denied" 2 "$d" "$json" ""
 rm -rf "$d"
 
+# 18. Missing core: CLAUDE_PLUGIN_ROOT_CORE points at a nonexistent path and
+# no sibling ../../core is present (issue-16 defect 1) -> guarded source
+# fails closed, exit 2.
+run_case "missing core: unresolvable CLAUDE_PLUGIN_ROOT_CORE fails closed" 2 "docs/issue-99/proposals/test.md" "nothing here" "" "CLAUDE_PLUGIN_ROOT_CORE=/nonexistent-core-path-xyz"
+
 echo ""
 echo "Summary: $((TOTAL_COUNT - FAIL_COUNT))/$TOTAL_COUNT passed"
 

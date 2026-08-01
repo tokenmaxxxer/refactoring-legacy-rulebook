@@ -296,6 +296,14 @@ print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat > docs/issue-9
 run_raw "Bash-tool write to in-scope path is denied" 2 "$d" "$json" ""
 rm -rf "$d"
 
+# 18. Missing core: CLAUDE_PLUGIN_ROOT_CORE points at a nonexistent path and
+# no sibling ../../core is present (issue-16 defect 1) -> guarded source
+# fails closed, exit 2.
+d="$(mktemp -d)"; (cd "$d" && git init -q)
+json='{"tool_name":"Write","tool_input":{"file_path":"docs/issue-99/reports/refactoring-legacy.md","content":"nothing here"},"cwd":"."}'
+run_raw "missing core: unresolvable CLAUDE_PLUGIN_ROOT_CORE fails closed" 2 "$d" "$json" "CLAUDE_PLUGIN_ROOT_CORE=/nonexistent-core-path-xyz"
+rm -rf "$d"
+
 echo "----"
 echo "Total: $TOTAL, Failed: $FAILS"
 

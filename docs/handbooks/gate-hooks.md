@@ -22,8 +22,15 @@ reference-adopted per `docs/issue-13/proposals/proposal.md` — never
 vendored into this repo):
 
 ```
-. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh"
+. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh" || { echo "methodology-gate.sh: cannot source gate-lib.sh" >&2; exit 2; }
 ```
+
+(issue #16, reference-adopted core issue-75's exact guard: an unguarded
+source that fails when core is unreachable runs no `gate_*` code at all,
+so `gate_kill_switch_active` reads as undefined afterward and every call
+site silently allows — the `|| { ...; exit 2; }` closes that fail-open
+path.) `core/hooks/tests/compliance-check.sh` (below) flags any
+`gate-lib.sh` source lacking this guard.
 
 resolving `core/` as a sibling of this repository's own root (mirroring the
 existing `refactoring-legacy/hooks/directive.sh` pattern for
@@ -39,6 +46,7 @@ carries no hand-rolled equivalent of these:
 bash "${CORE_PLUGIN_ROOT:-core}"/hooks/tests/compliance-check.sh proposal-norm/hooks
 bash "${CORE_PLUGIN_ROOT:-core}"/hooks/tests/compliance-check.sh characterization-tests/hooks
 bash "${CORE_PLUGIN_ROOT:-core}"/hooks/tests/compliance-check.sh refactoring-steps/hooks
+bash "${CORE_PLUGIN_ROOT:-core}"/hooks/tests/compliance-check.sh refactoring-legacy/hooks
 ```
 
 Each is fail-closed (`gate_trap_fail_closed`'s EXIT trap remaps any exit
@@ -76,8 +84,35 @@ symbolic-ref --short HEAD` before falling back to `git rev-parse
 --abbrev-ref HEAD` — the former also works on an unborn HEAD (a fresh repo
 with no commits yet), which the latter does not.
 
+Each of the three `run-gate-tests.sh` also carries a missing-core case
+(`CLAUDE_PLUGIN_ROOT_CORE` pointed at a nonexistent path, no `../../core`
+sibling present) proving the guard above flips the gate from fail-open to
+a clean `exit 2` deny (issue #16). The `refactoring-legacy` role plugin's
+own `hooks/refactoring-legacy-progress-gate.sh` (backing its `hooks.json`
+`Bash` matcher, previously a ghost file — issue #16) follows the same
+guard/kill-switch shape and has its own
+`hooks/tests/run-gate-tests.sh`. `hooks/tests/manifest-integrity-check.sh`
+is a repo-wide, permanent regression guard: it scans every plugin's
+`hooks.json` for `${CLAUDE_PLUGIN_ROOT}`-relative `command` entries and
+hard-fails if the referenced file is absent from disk, so any future
+ghost-matcher mismatch fails loudly instead of silently passing:
+
+```
+bash refactoring-legacy/hooks/tests/run-gate-tests.sh
+bash refactoring-legacy/hooks/tests/manifest-integrity-check.sh
+```
+
+A `compliance-check.sh`-clean record (above) is a point-in-time claim
+against the core commit it was run against, not a standing guarantee
+(issue #16) — a stale record does not track a newer, stricter core check
+automatically; re-run it against current core `main` before trusting an
+old record.
+
 See `docs/issue-10/proposals/methodology-enforcement.md` and
-`docs/issue-10/reports/refactoring-legacy.md` for the original design, and
+`docs/issue-10/reports/refactoring-legacy.md` for the original design,
 `docs/issue-13/proposals/proposal.md` /
 `docs/issue-13/reports/refactoring-legacy.md` for the gate-house A+
-remediation that migrated these gates onto core's shared library.
+remediation that migrated these gates onto core's shared library, and
+`docs/issue-16/proposals/refactoring-legacy.md` /
+`docs/issue-16/reports/refactoring-legacy.md` for the source-guard,
+ghost-matcher, and missing-core-coverage closure above.
