@@ -1,114 +1,169 @@
 #!/usr/bin/env bash
 # PreToolUse gate: mechanically enforces characterization-testing methodology
 # (Feathers, "Working Effectively with Legacy Code") on phase-2 refactoring-legacy
-# report writes. See ../CANON.md for the methodology reference.
+# report writes. See ../CANON.md for the methodology reference. Migrated onto
+# core's gate-house standard (issue-72, reference-adopted per issue-13's
+# precondition — see docs/issue-13/proposals/proposal.md).
+#
+# Kill switch: export CHARACTERIZATION_TESTS_GATE_OFF=1
+. "${CLAUDE_PLUGIN_ROOT_CORE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../core" && pwd -P)}/hooks/lib/gate-lib.sh"
+gate_trap_fail_closed
 set -uo pipefail
 
-# (a) Kill switch first.
-if [ "${CHARACTERIZATION_TESTS_GATE_OFF:-}" = "1" ]; then
+gate_kill_switch_active "${CHARACTERIZATION_TESTS_GATE_OFF:-}" || { trap - EXIT; exit 0; }
+
+payload="$(cat 2>/dev/null || true)"
+
+tool_name="$(printf '%s' "$payload" | GATE_LIB_PY="$GATE_LIB_PY" python3 -c '
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("gate_lib", os.environ["GATE_LIB_PY"])
+gate_lib = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate_lib)
+def deny(m):
+    sys.stderr.write("characterization-tests gate: DENY — " + m + "\n"); sys.exit(2)
+event = gate_lib.gate_parse_json_or_deny(sys.stdin.read(), deny)
+print(event.get("tool_name") or "")
+')"
+
+if [ "$tool_name" = "Bash" ]; then
+  command_str="$(printf '%s' "$payload" | python3 -c '
+import json, sys
+try:
+    event = json.loads(sys.stdin.read())
+except Exception:
+    print("")
+    sys.exit(0)
+print((event.get("tool_input") or {}).get("command") or "")
+')"
+  while IFS= read -r tok; do
+    [ -n "$tok" ] || continue
+    case "$tok" in
+      *docs/issue-*/reports/refactoring-legacy.md)
+        echo "characterization-tests gate: DENY — a Bash-tool write toward $tok cannot have its resulting content reconstructed by this gate; use Write/Edit/MultiEdit for docs/issue-<n>/reports/refactoring-legacy.md, or run this Bash command outside that scope" >&2
+        exit 2
+        ;;
+    esac
+  done <<EOF
+$(gate_bash_write_targets "$command_str")
+EOF
   exit 0
 fi
 
-STDIN_JSON="$(cat)"
+PY_OUTPUT="$(printf '%s' "$payload" | GATE_LIB_PY="$GATE_LIB_PY" python3 -c '
+import importlib.util, os, posixpath, re, sys
 
-RESULT="$(CHARACTERIZATION_GATE_STDIN_JSON="$STDIN_JSON" python3 - <<'PYEOF' 2>/dev/null
-import json
-import re
-import sys
-import os
+spec = importlib.util.spec_from_file_location("gate_lib", os.environ["GATE_LIB_PY"])
+gate_lib = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate_lib)
 
-try:
-    payload = json.loads(os.environ.get("CHARACTERIZATION_GATE_STDIN_JSON", ""))
 
-    tool_name = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input") or {}
-    file_path = tool_input.get("file_path")
-    cwd = payload.get("cwd") or ""
+def deny(msg):
+    sys.stderr.write("characterization-tests gate: DENY — " + msg + "\n")
+    sys.exit(2)
 
-    if not file_path:
-        print("MISSING_FILE_PATH")
-        sys.exit(0)
 
-    scope_re = re.compile(r"docs/issue-[0-9]+/reports/refactoring-legacy\.md$")
-    if not scope_re.search(file_path):
-        print("OUT_OF_SCOPE")
-        sys.exit(0)
+event = gate_lib.gate_parse_json_or_deny(sys.stdin.read(), deny)
+tool_name = event.get("tool_name", "")
+tool_input = event.get("tool_input") or {}
+cwd = event.get("cwd") or os.getcwd()
+file_path = tool_input.get("file_path")
 
-    # Resolve on-disk path relative to cwd if file_path is relative.
-    resolved_path = file_path
-    if not os.path.isabs(resolved_path) and cwd:
-        resolved_path = os.path.join(cwd, file_path)
+if not file_path or not isinstance(file_path, str):
+    deny("tool_input.file_path missing")
 
-    existing = ""
-    if os.path.isfile(resolved_path):
+root = os.path.abspath(cwd)
+rel = gate_lib.gate_normalize_path(root, file_path)
+if rel is None or not re.search(r"^docs/issue-[0-9]+/reports/refactoring-legacy\.md$", rel):
+    sys.exit(0)
+
+resolved_path = posixpath.join(root.replace("\\", "/"), rel)
+existing = ""
+if os.path.isfile(resolved_path):
+    try:
         with open(resolved_path, "r", encoding="utf-8", errors="replace") as f:
             existing = f.read()
+    except OSError:
+        existing = None
 
-    new_text = ""
-    if tool_name == "Write":
-        new_text = tool_input.get("content", "") or ""
-    elif tool_name == "Edit":
-        new_text = tool_input.get("new_string", "") or ""
-    elif tool_name == "MultiEdit":
-        edits = tool_input.get("edits") or []
-        new_text = "".join((e.get("new_string", "") or "") for e in edits)
+new_text, ok = gate_lib.gate_reconstruct_write(tool_name, tool_input, existing)
+if not ok:
+    deny(
+        "cannot determine the resulting content of this %s on %s from the "
+        "tool_input given; refusing rather than guessing" % (tool_name, rel)
+    )
+
+effective = new_text
+low = effective.lower()
+
+HEADING_RE = re.compile(r"^(#{1,3})\s+(.*)$", re.M)
+headings = [(m.start(), len(m.group(1)), m.group(2).strip()) for m in HEADING_RE.finditer(effective)]
+
+
+def section_text(idx):
+    start, level, _ = headings[idx]
+    body_start = effective.find("\n", start)
+    body_start = body_start + 1 if body_start >= 0 else len(effective)
+    end = len(effective)
+    for j in range(idx + 1, len(headings)):
+        if headings[j][1] <= level:
+            end = headings[j][0]
+            break
+    return effective[body_start:end]
+
+
+missing = []
+
+has_evidence = ("characterization test" in low) or ("특성화 테스트" in effective)
+if not has_evidence:
+    missing.append("characterization-test evidence")
+
+seam_alias = re.compile(r"\bseam\b", re.I)
+has_seam_heading = any(seam_alias.search(title) for _, _, title in headings)
+if not has_seam_heading:
+    missing.append("a heading naming the seam (\"seam\" in a heading title, not a bare mention)")
+
+# characterization_tests_path: and test_run: must be adjacent (within 3
+# lines of each other) so a path and a claimed run result cannot be stated
+# in unrelated parts of the record.
+path_m = re.search(r"^[ \t]*characterization_tests_path:[ \t]*(\S+)[ \t]*$", effective, re.M)
+run_m = re.search(r"^[ \t]*test_run:[ \t]*(PASS|FAIL)\b.*$", effective, re.M)
+
+if not path_m:
+    missing.append("characterization_tests_path field")
+if not run_m:
+    missing.append("test_run: <PASS|FAIL> (<command>) field")
+
+if path_m and run_m:
+    path_line = effective.count("\n", 0, path_m.start())
+    run_line = effective.count("\n", 0, run_m.start())
+    if abs(path_line - run_line) > 3:
+        missing.append("characterization_tests_path and test_run must be within 3 lines of each other")
+    elif run_m.group(1) != "PASS":
+        missing.append("test_run must assert PASS, not %s" % run_m.group(1))
     else:
-        new_text = tool_input.get("content", "") or tool_input.get("new_string", "") or ""
+        tests_path = path_m.group(1)
+        rel_tests = gate_lib.gate_normalize_path(root, tests_path)
+        if rel_tests is None:
+            missing.append("characterization_tests_path resolves outside the repo root")
+        else:
+            abs_tests = posixpath.join(root.replace("\\", "/"), rel_tests)
+            if not (os.path.isfile(abs_tests) and os.path.getsize(abs_tests) > 0):
+                missing.append(
+                    "characterization_tests_path (%s) must resolve to a file that exists on disk and is non-empty" % tests_path
+                )
 
-    effective = existing + new_text
-    lower = effective.lower()
+if missing:
+    deny("missing/invalid: " + "; ".join(missing))
 
-    missing = []
-
-    has_evidence = ("characterization test" in lower) or ("특성화 테스트" in effective)
-    if not has_evidence:
-        missing.append("characterization-test evidence")
-
-    has_seam = "seam" in lower
-    if not has_seam:
-        missing.append("seam")
-
-    field_re = re.compile(r"characterization_tests_path:\s*\S+")
-    has_field = bool(field_re.search(effective))
-    if not has_field:
-        missing.append("characterization_tests_path field")
-
-    if missing:
-        print("DENY:" + ", ".join(missing))
-    else:
-        print("ALLOW")
-except Exception as exc:
-    print("ERROR:" + str(exc))
-PYEOF
-)"
+sys.exit(0)
+' 2>&1 1>/dev/null)"
 PY_EXIT=$?
 
 if [ $PY_EXIT -ne 0 ]; then
-  echo "characterization-tests gate: DENY — internal error running parser (fail-closed)" >&2
+  if [ -n "$PY_OUTPUT" ]; then
+    echo "$PY_OUTPUT" >&2
+  else
+    echo "characterization-tests gate: DENY — internal error running methodology gate" >&2
+  fi
   exit 2
 fi
 
-case "$RESULT" in
-  MISSING_FILE_PATH)
-    echo "characterization-tests gate: DENY — missing tool_input.file_path (fail-closed)" >&2
-    exit 2
-    ;;
-  OUT_OF_SCOPE)
-    exit 0
-    ;;
-  ALLOW)
-    exit 0
-    ;;
-  DENY:*)
-    echo "characterization-tests gate: DENY — missing: ${RESULT#DENY:}" >&2
-    exit 2
-    ;;
-  ERROR:*)
-    echo "characterization-tests gate: DENY — internal error: ${RESULT#ERROR:} (fail-closed)" >&2
-    exit 2
-    ;;
-  *)
-    echo "characterization-tests gate: DENY — unrecognized gate result (fail-closed)" >&2
-    exit 2
-    ;;
-esac
+exit 0

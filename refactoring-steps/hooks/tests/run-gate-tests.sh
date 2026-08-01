@@ -45,34 +45,91 @@ print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1],"con
 ' "$1" "$2" "$3"
 }
 
-# Case 1: catalog + equivalence present
+FULL_RECORD='## Refactoring steps
+- Applied Extract Method to the function.
+
+## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+'
+
+# Case 1: catalog step (as a list item under a refactoring-steps heading) +
+# equivalence note (under an equivalence heading, naming a concrete test).
 d="$(new_tmpdir)"
 mkdir -p "$d/docs/issue-42/reports"
-j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "Applied Extract Method. Confirmed behavioral equivalence via tests." "$d")"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "$FULL_RECORD" "$d")"
 run_case "record: catalog steps + equivalence note present" 0 "$j" "$d"
 
 # Case 2: missing catalog step name
 d="$(new_tmpdir)"
 mkdir -p "$d/docs/issue-42/reports"
-j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "Confirmed behavioral equivalence via tests." "$d")"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+" "$d")"
 run_case "record: missing catalog step name" 2 "$j" "$d"
+
+# Case 2b: "catalog" bare-word loophole closed — the word alone, even under
+# the right heading as a list item, no longer counts as a real step name.
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Used a catalog approach.
+
+## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+" "$d")"
+run_case "record: bare word catalog no longer satisfies the catalog-step check" 2 "$j" "$d"
+
+# Case 2c: catalog step mentioned but not as a list item under the heading
+# (structure upgrade, not just presence-anywhere).
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "We applied Extract Method to the function.
+
+## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+" "$d")"
+run_case "record: catalog step mentioned outside a list item under the heading denies" 2 "$j" "$d"
 
 # Case 3: missing equivalence note
 d="$(new_tmpdir)"
 mkdir -p "$d/docs/issue-42/reports"
-j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "Applied Extract Method to the function." "$d")"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Applied Extract Method to the function.
+" "$d")"
 run_case "record: missing equivalence note" 2 "$j" "$d"
 
-# Case 4: strangler without seam
+# Case 3b: equivalence note present but with no concrete test-name-shaped
+# referent (structure upgrade over the bare 'equivalence' substring check).
 d="$(new_tmpdir)"
 mkdir -p "$d/docs/issue-42/reports"
-j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "Applied Extract Method. Confirmed equivalence. Used strangler fig migration." "$d")"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Applied Extract Method to the function.
+
+## Equivalence
+Tests pass.
+" "$d")"
+run_case "record: equivalence note with no named test denies" 2 "$j" "$d"
+
+# Case 4: strangler without seam -> exit 2
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Used strangler fig migration.
+
+## Equivalence
+Confirmed equivalence via test/foo_test.py.
+" "$d")"
 run_case "record: strangler mentioned without seam" 2 "$j" "$d"
 
-# Case 5: strangler with seam
+# Case 5: strangler with seam -> exit 0
 d="$(new_tmpdir)"
 mkdir -p "$d/docs/issue-42/reports"
-j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "Applied Extract Method. Confirmed equivalence. Used strangler fig migration behind a stable seam at the API gateway." "$d")"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Used strangler fig migration behind a stable seam at the API gateway.
+
+## Equivalence
+Confirmed equivalence via test/foo_test.py.
+" "$d")"
 run_case "record: strangler mentioned with seam" 0 "$j" "$d"
 
 # Case 6: src edit blocked, no characterization_tests_path yet
@@ -105,6 +162,80 @@ d="$(new_tmpdir)"
 mkdir -p "$d/src"
 j="$(json_write "src/foo.py" "def foo(): pass" "$d")"
 run_case "kill switch on" 0 "$j" "$d" "REFACTORING_STEPS_GATE_OFF=1"
+
+# --- gate-house-standard mandatory cases (issue-13/issue-72) -------------
+
+# 10. Edit with replace_all:true against a multiply-occurring old_string.
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+printf '%s' "$FULL_RECORD" > "$d/docs/issue-42/reports/refactoring-legacy.md"
+j="$(python3 -c '
+import json
+print(json.dumps({"tool_name":"Edit","tool_input":{"file_path":"docs/issue-42/reports/refactoring-legacy.md","old_string":"test/foo_test.py","new_string":"test/foo_test.py and test/foo_test.py","replace_all":True},"cwd":"."}))
+')"
+run_case "Edit replace_all:true reconstructs full text" 0 "$j" "$d"
+
+# 11. MultiEdit with mixed replace_all true/false — a false-replace_all edit
+# that removes the equivalence heading must be honored (deny).
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+printf '%s' "$FULL_RECORD" > "$d/docs/issue-42/reports/refactoring-legacy.md"
+j="$(python3 -c '
+import json
+print(json.dumps({"tool_name":"MultiEdit","tool_input":{"file_path":"docs/issue-42/reports/refactoring-legacy.md","edits":[
+    {"old_string":"## Equivalence\nConfirmed behavioral equivalence via test/foo_test.py.\n","new_string":"","replace_all":False},
+    {"old_string":"Extract Method","new_string":"Extract Method, Extract Method","replace_all":True}
+]},"cwd":"."}))
+')"
+run_case "MultiEdit mixed replace_all denies on removed equivalence section" 2 "$j" "$d"
+
+# 12. Malformed JSON (truncated) -> fail closed.
+d="$(new_tmpdir)"
+run_case "malformed JSON (truncated) denies" 2 '{"tool_name":"Write","tool_in' "$d"
+
+# 13. Malformed JSON (non-object top level) -> fail closed.
+d="$(new_tmpdir)"
+run_case "malformed JSON (non-object) denies" 2 '"just a string"' "$d"
+
+# 14. Malformed JSON (empty payload) -> fail closed.
+d="$(new_tmpdir)"
+run_case "malformed JSON (empty) denies" 2 '' "$d"
+
+# 15. Kill switch set to an unrecognized value must stay ACTIVE.
+d="$(new_tmpdir)"
+mkdir -p "$d/src"
+j="$(json_write "src/foo.py" "def foo(): pass" "$d")"
+run_case "kill switch unrecognized value stays active" 2 "$j" "$d" "REFACTORING_STEPS_GATE_OFF=bogus"
+
+# 16. Absolute file_path matches the same scope a relative fixture matches,
+# plus a ./-prefixed variant.
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(python3 -c "
+import json
+print(json.dumps({'tool_name':'Write','tool_input':{'file_path':'$d/docs/issue-42/reports/refactoring-legacy.md','content':'nothing here'},'cwd':'.'}))
+")"
+run_case "absolute file_path matches the same scope" 2 "$j" "$d"
+j="$(json_write "./docs/issue-42/reports/refactoring-legacy.md" "nothing here" "$d")"
+run_case "./-prefixed file_path matches the same scope" 2 "$j" "$d"
+
+# 17. A Bash-tool write reaching the same target a Write-tool call would
+# hit is denied outright.
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(python3 -c '
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat > docs/issue-42/reports/refactoring-legacy.md <<EOF\nnothing here\nEOF"},"cwd":"."}))
+')"
+run_case "Bash-tool write to record path is denied" 2 "$j" "$d"
+
+d="$(new_tmpdir)"
+mkdir -p "$d/src"
+j="$(python3 -c '
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"sed -i s/x/y/ src/foo.py"},"cwd":"."}))
+')"
+run_case "Bash-tool write to src/** path is denied" 2 "$j" "$d"
 
 echo "----"
 if [ "$FAIL_COUNT" -gt 0 ]; then
