@@ -101,8 +101,10 @@ run_raw() {
 FULL_RECORD="## Seam
 We added a characterization test using an object seam to substitute the dependency.
 
+motivation: the dependency was untested before any structural change.
 characterization_tests_path: test/foo_characterization_test.py
 test_run: PASS (pytest test/foo_characterization_test.py)
+verdict: pass
 "
 
 # Case 1: seam heading + adjacent path/test_run PASS, path exists -> exit 0
@@ -213,6 +215,44 @@ test_run: PASS (pytest)
 " \
   2 \
   "" \
+  0
+
+# --- issue-20 spec-vocabulary regression cases ---------------------------
+
+# 9b. missing motivation: field -> exit 2 (motivation-undeclared refusal state)
+run_case \
+  "missing motivation: field is denied (motivation-undeclared)" \
+  "docs/issue-99/reports/refactoring-legacy.md" \
+  "" \
+  "## Seam
+We added a characterization test using a seam to substitute the dependency.
+
+characterization_tests_path: test/foo_characterization_test.py
+test_run: PASS (pytest test/foo_characterization_test.py)
+verdict: pass
+" \
+  2
+
+# 9c. missing verdict: field -> exit 2
+run_case \
+  "missing verdict: field is denied" \
+  "docs/issue-99/reports/refactoring-legacy.md" \
+  "" \
+  "## Seam
+We added a characterization test using a seam to substitute the dependency.
+
+motivation: the dependency was untested before any structural change.
+characterization_tests_path: test/foo_characterization_test.py
+test_run: PASS (pytest test/foo_characterization_test.py)
+" \
+  2
+
+# 9d. all spec fields present, valid verdict -> exit 0
+run_case \
+  "all spec fields present with valid verdict passes" \
+  "docs/issue-99/reports/refactoring-legacy.md" \
+  "" \
+  "$FULL_RECORD" \
   0
 
 # --- gate-house-standard mandatory cases (issue-13/issue-72) -------------

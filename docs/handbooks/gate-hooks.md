@@ -108,6 +108,20 @@ against the core commit it was run against, not a standing guarantee
 automatically; re-run it against current core `main` before trusting an
 old record.
 
+**Spec field checks (issue #20)** — `characterization-tests`'s gate also
+requires a `motivation:` field adjacent to the `characterization_tests_path:`/
+`test_run:` pair (deny names the `motivation-undeclared` refusal state) and
+a `verdict: pass|fail` field as the closed-enum companion to `test_run:`
+(a `characterization_tests_path` that fails to resolve denies naming the
+`tests-unreachable` error state). `refactoring-steps`'s gate also requires
+a `refactoring_name:` field under the "refactoring steps" heading and a
+`mechanics:` field under the "equivalence" heading; the equivalence-heading
+scan accumulates across every matching heading in the document (stopping
+only once both `has_equivalence` and `has_mechanics` are true) rather than
+stopping at the first match, so a document with more than one "Equivalence"
+heading is evaluated in full. Their `run-gate-tests.sh` suites carry
+regression cases for each new field plus the multi-heading scan case.
+
 See `docs/issue-10/proposals/methodology-enforcement.md` and
 `docs/issue-10/reports/refactoring-legacy.md` for the original design,
 `docs/issue-13/proposals/proposal.md` /

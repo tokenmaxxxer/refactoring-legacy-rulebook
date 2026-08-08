@@ -103,6 +103,48 @@ ever again references a command file absent from disk.
 Each plugin's `hooks/` directory passes
 `core/hooks/tests/compliance-check.sh` clean.
 
+**Spec field mapping (issue #20)** — the realized marketplace spec
+`roles/specs/refactoring-legacy.spec.json` names four required deliverable
+fields and a five-value `loop_state` vocabulary; both are layered onto the
+methodology above under their literal spec names, never as a parallel
+system:
+
+- `refactoring_name` — the named Fowler-catalog step already required by
+  `refactoring-steps` as a list item under a "refactoring steps" heading;
+  the gate now also requires a `refactoring_name:` field in the same
+  section naming that step.
+- `motivation` — the *why* half of the record, grounded in Fowler's own
+  catalog-entry shape (motivation precedes mechanics in every catalog
+  entry this rulebook cites); required by `characterization-tests` as a
+  `motivation:` field adjacent to the `characterization_tests_path:`/
+  `test_run:` pair.
+- `mechanics` — the applied step sequence, mapped onto the existing
+  before/after equivalence note; required by `refactoring-steps` as a
+  `mechanics:` field under the "equivalence" heading.
+- `verdict` — the closed-enum (`pass`/`fail`) companion to the existing
+  free-text `test_run: PASS (<command>)` line; required by
+  `characterization-tests` alongside it. `test_run:` keeps the
+  human-readable command evidence; `verdict:` supplies the spec's
+  checkable enum.
+
+`loop_state` (spec: `identifying`, `applying`, `landed`,
+`motivation-undeclared`, `tests-unreachable`):
+
+- `identifying` — characterizing the seam and capturing behavior, before
+  any refactoring step is applied (progress state; no per-step gate check
+  yet, unchanged from issue-13's Out-of-scope call).
+- `applying` — a named catalog step is in progress, tests already
+  captured (progress state; same open status as `identifying`).
+- `landed` — the phase-2 record is complete: characterization evidence,
+  `motivation:`, the applied step(s) with `refactoring_name:`,
+  `mechanics:`, and `verdict:` all present and gate-passing.
+- `motivation-undeclared` — refusal state: `characterization-tests` denies
+  a write whose record has no `motivation:` field.
+- `tests-unreachable` — error state: `characterization-tests` denies a
+  write whose `characterization_tests_path` cannot be resolved to an
+  existing, non-empty file — distinct from `verdict: fail`, which means
+  the tests ran and failed.
+
 ## Install
 
 This rulebook now references core canon (issue #2) instead of vendoring its

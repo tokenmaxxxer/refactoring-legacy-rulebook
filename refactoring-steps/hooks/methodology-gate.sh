@@ -119,25 +119,37 @@ if re.search(r"^docs/issue-[0-9]+/reports/refactoring-legacy\.md$", rel):
                       "strangler"]
     item_re = re.compile(r"^\s*[-*]\s+(.*)$", re.M)
 
+    name_field_re = re.compile(r"^[ \t]*refactoring_name:[ \t]*\S", re.M)
+
     has_catalog = False
+    has_name_field = False
     for i, (_, _, title) in enumerate(headings):
         if steps_heading_re.search(title):
-            for m in item_re.finditer(section_text(i)):
+            steps_section = section_text(i)
+            for m in item_re.finditer(steps_section):
                 item = m.group(1).lower()
                 if any(t in item for t in catalog_terms):
                     has_catalog = True
                     break
-        if has_catalog:
+            if name_field_re.search(steps_section):
+                has_name_field = True
+        if has_catalog and has_name_field:
             break
 
     equiv_heading_re = re.compile(r"equivalence|동등성", re.I)
     test_ref_re = re.compile(r"[./\w-]*/[\w.-]+|(?:[Tt]est_[\w.]+|[\w.]*[Tt]est\b)")
+    mechanics_field_re = re.compile(r"^[ \t]*mechanics:[ \t]*\S", re.M)
     has_equivalence = False
+    has_mechanics = False
     for i, (_, _, title) in enumerate(headings):
         if equiv_heading_re.search(title):
-            if test_ref_re.search(section_text(i)):
+            equiv_section = section_text(i)
+            if test_ref_re.search(equiv_section):
                 has_equivalence = True
-                break
+            if mechanics_field_re.search(equiv_section):
+                has_mechanics = True
+        if has_equivalence and has_mechanics:
+            break
 
     reasons = []
     if not has_catalog:
@@ -146,11 +158,21 @@ if re.search(r"^docs/issue-[0-9]+/reports/refactoring-legacy\.md$", rel):
             "\"refactoring steps\" heading (e.g. Extract Method, Rename, "
             "Inline, Move Method, strangler)"
         )
+    if not has_name_field:
+        reasons.append(
+            "no refactoring_name: field under the \"refactoring steps\" "
+            "heading (spec required field, the catalog step name)"
+        )
     if not has_equivalence:
         reasons.append(
             "no before/after equivalence note found under an "
             "\"equivalence\"/동등성 heading naming a concrete test (path-like "
             "or test_/Test-prefixed identifier)"
+        )
+    if not has_mechanics:
+        reasons.append(
+            "no mechanics: field under the \"equivalence\" heading (spec "
+            "required field, naming the applied step sequence)"
         )
 
     seam_re = re.compile(r"\bseam\b", re.I)

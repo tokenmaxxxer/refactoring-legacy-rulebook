@@ -122,14 +122,26 @@ if not has_seam_heading:
 
 # characterization_tests_path: and test_run: must be adjacent (within 3
 # lines of each other) so a path and a claimed run result cannot be stated
-# in unrelated parts of the record.
+# in unrelated parts of the record. motivation: (spec required field --
+# refactoring-legacy.spec.json) and verdict: (the spec closed-enum
+# companion to the free-text test_run: line) are checked for the same
+# adjacency.
 path_m = re.search(r"^[ \t]*characterization_tests_path:[ \t]*(\S+)[ \t]*$", effective, re.M)
 run_m = re.search(r"^[ \t]*test_run:[ \t]*(PASS|FAIL)\b.*$", effective, re.M)
+motivation_m = re.search(r"^[ \t]*motivation:[ \t]*(\S.*)$", effective, re.M)
+verdict_m = re.search(r"^[ \t]*verdict:[ \t]*(pass|fail)\b.*$", effective, re.M | re.I)
+
+# motivation: is a spec-required field (refactoring_name/motivation/mechanics/
+# verdict); its absence is the spec motivation-undeclared refusal state.
+if not motivation_m:
+    deny("missing motivation: field (spec required field; refusal state motivation-undeclared)")
 
 if not path_m:
     missing.append("characterization_tests_path field")
 if not run_m:
     missing.append("test_run: <PASS|FAIL> (<command>) field")
+if not verdict_m:
+    missing.append("verdict: <pass|fail> field (spec required field, closed-enum companion to test_run:)")
 
 if path_m and run_m:
     path_line = effective.count("\n", 0, path_m.start())
@@ -142,13 +154,24 @@ if path_m and run_m:
         tests_path = path_m.group(1)
         rel_tests = gate_lib.gate_normalize_path(root, tests_path)
         if rel_tests is None:
-            missing.append("characterization_tests_path resolves outside the repo root")
+            deny(
+                "characterization_tests_path (%s) resolves outside the repo root "
+                "(refusal state tests-unreachable)" % tests_path
+            )
         else:
             abs_tests = posixpath.join(root.replace("\\", "/"), rel_tests)
             if not (os.path.isfile(abs_tests) and os.path.getsize(abs_tests) > 0):
-                missing.append(
-                    "characterization_tests_path (%s) must resolve to a file that exists on disk and is non-empty" % tests_path
+                deny(
+                    "characterization_tests_path (%s) must resolve to a file that exists on "
+                    "disk and is non-empty (refusal state tests-unreachable)" % tests_path
                 )
+
+if motivation_m and verdict_m:
+    motivation_line = effective.count("\n", 0, motivation_m.start())
+    verdict_line = effective.count("\n", 0, verdict_m.start())
+    path_line = effective.count("\n", 0, path_m.start()) if path_m else None
+    if path_line is not None and abs(motivation_line - path_line) > 3 and abs(verdict_line - path_line) > 3:
+        missing.append("motivation and verdict must be adjacent (within 3 lines) to the characterization_tests_path/test_run pair")
 
 if missing:
     deny("missing/invalid: " + "; ".join(missing))
