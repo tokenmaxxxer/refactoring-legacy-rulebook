@@ -48,8 +48,12 @@ print(json.dumps({"tool_name":"Write","tool_input":{"file_path":sys.argv[1],"con
 FULL_RECORD='## Refactoring steps
 - Applied Extract Method to the function.
 
+refactoring_name: Extract Method
+
 ## Equivalence
 Confirmed behavioral equivalence via test/foo_test.py.
+
+mechanics: extracted the block into a new function and replaced the call site.
 '
 
 # Case 1: catalog step (as a list item under a refactoring-steps heading) +
@@ -127,8 +131,12 @@ mkdir -p "$d/docs/issue-42/reports"
 j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
 - Used strangler fig migration behind a stable seam at the API gateway.
 
+refactoring_name: strangler fig migration
+
 ## Equivalence
 Confirmed equivalence via test/foo_test.py.
+
+mechanics: routed new traffic through the seam while the old path stayed live.
 " "$d")"
 run_case "record: strangler mentioned with seam" 0 "$j" "$d"
 
@@ -162,6 +170,60 @@ d="$(new_tmpdir)"
 mkdir -p "$d/src"
 j="$(json_write "src/foo.py" "def foo(): pass" "$d")"
 run_case "kill switch on" 0 "$j" "$d" "REFACTORING_STEPS_GATE_OFF=1"
+
+# --- issue-20 spec-vocabulary regression cases ---------------------------
+
+# 9b. missing refactoring_name: field under the refactoring-steps heading
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Applied Extract Method to the function.
+
+## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+
+mechanics: extracted the block into a new function and replaced the call site.
+" "$d")"
+run_case "record: missing refactoring_name: field denies" 2 "$j" "$d"
+
+# 9c. missing mechanics: field under the equivalence heading
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Applied Extract Method to the function.
+
+refactoring_name: Extract Method
+
+## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+" "$d")"
+run_case "record: missing mechanics: field denies" 2 "$j" "$d"
+
+# 9c2. first Equivalence heading incomplete, a second Equivalence heading
+# carries the test reference and mechanics: field -> must still pass (guards
+# against stopping the scan at the first matching heading).
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "## Refactoring steps
+- Applied Extract Method to the function.
+
+refactoring_name: Extract Method
+
+## Equivalence
+Draft notes, not yet complete.
+
+## Equivalence
+Confirmed behavioral equivalence via test/foo_test.py.
+
+mechanics: extracted the block into a new function and replaced the call site.
+" "$d")"
+run_case "record: second Equivalence heading with test+mechanics still passes" 0 "$j" "$d"
+
+# 9d. all spec fields present -> exit 0
+d="$(new_tmpdir)"
+mkdir -p "$d/docs/issue-42/reports"
+j="$(json_write "docs/issue-42/reports/refactoring-legacy.md" "$FULL_RECORD" "$d")"
+run_case "record: refactoring_name and mechanics present passes" 0 "$j" "$d"
 
 # --- gate-house-standard mandatory cases (issue-13/issue-72) -------------
 
