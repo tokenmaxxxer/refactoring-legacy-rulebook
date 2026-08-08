@@ -90,9 +90,13 @@ record the gate already partially covers.
    not guessed here.
 
 3. **`characterization-tests/hooks/methodology-gate.sh`** — extend the
-   existing structural check (currently: characterization-test heading +
-   adjacent `characterization_tests_path:`/`test_run: PASS (<command>)`
-   pair) to also require a `motivation:` field adjacent to that pair, and
+   existing structural check (currently: a "characterization test" mention
+   anywhere in the body, a heading containing "seam" anywhere in the doc,
+   and a `characterization_tests_path:`/`test_run: PASS (<command>)` pair
+   — checked independently of one another, per the after-proposal hunt
+   finding below, corrected from this proposal's earlier draft wording
+   "characterization-test heading + adjacent ... pair") to also require a
+   `motivation:` field adjacent to that pair, and
    to accept/require `verdict: pass`/`verdict: fail` as the closed-enum
    companion to the existing free-text `test_run:` line (both present:
    `test_run:` keeps the human-readable command evidence, `verdict:`
@@ -139,6 +143,19 @@ record the gate already partially covers.
   mechanism in this rulebook to attach a mechanical check to (README
   already notes this as open, unchanged from issue #13's Out-of-scope
   call); phase 2 documents these two states in README/directive.sh only.
+
+## Open finding from after-proposal hunt
+
+`docs/reports/2026-08-09-hunt-spec-vocabulary-alignment.md` (stance 0)
+found `characterization-tests/hooks/methodology-gate.sh`'s three checks
+(evidence phrase, seam heading, path/test_run pair) are structurally
+independent — a record can pass with a fabricated evidence file and an
+unrelated `test_run:` command. Adding `motivation:`/`verdict:` "adjacent
+to that pair" per item 3 above does not close this gap on its own. This
+proposal's write set does not include closing that pre-existing
+independence gap (it predates issue #20 and is broader than spec-vocabulary
+alignment); it is flagged here for phase-2 awareness and as a candidate
+follow-up issue, not folded into this proposal's scope.
 
 ## How you'll know it worked
 
