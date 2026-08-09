@@ -1,5 +1,10 @@
 ---
-code_under_review: PENDING_COMMIT
+code_under_review:
+  - proposal-norm/hooks/tests/run-gate-tests.sh
+  - refactoring-legacy/hooks/tests/run-gate-tests.sh
+  - characterization-tests/hooks/tests/run-gate-tests.sh
+  - refactoring-steps/hooks/tests/run-gate-tests.sh
+  - docs/handbooks/gate-hooks.md
 type: refactor
 breaking: false
 verdict: pass
@@ -61,9 +66,9 @@ Ran all four scripts locally in both states:
   handbook confirms each references the convention doc.
 
 closed_checks:
-- outside-spawn-env SKIP contract (all four scripts, exit 75) — code_under_review: PENDING_COMMIT
-- core-reachable regression check (all four scripts, unchanged pass) — code_under_review: PENDING_COMMIT
-- convention-doc reference grep — code_under_review: PENDING_COMMIT
+- outside-spawn-env SKIP contract (all four scripts, exit 75) — code_under_review as above
+- core-reachable regression check (all four scripts, unchanged pass) — code_under_review as above
+- convention-doc reference grep — code_under_review as above
 
 ## What did not work
 None.
@@ -76,8 +81,7 @@ None.
   (env/behavior contract change to the four test runners).
 
 ## Next steps
-Commit this record and the code together, push, open the phase-2 PR
-against `main` with `Closes #23` in the body.
+None — push and open the phase-2 PR against `main` with `Closes #23`.
 
 ## Resolution path
 No open findings; none to resolve.
