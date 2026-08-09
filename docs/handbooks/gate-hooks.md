@@ -97,6 +97,19 @@ is a repo-wide, permanent regression guard: it scans every plugin's
 hard-fails if the referenced file is absent from disk, so any future
 ghost-matcher mismatch fails loudly instead of silently passing:
 
+All four `run-gate-tests.sh` scripts additionally carry a test-env
+resolution pre-check (`docs/specs/test-env-resolution.md`, issue #551,
+`on-the-record` repo), run before any test case: if
+`CLAUDE_PLUGIN_ROOT_CORE` is unset or unresolvable and no sibling
+`../../../core/hooks/lib/gate-lib.sh` exists relative to the runner, the
+script prints an explicit `SKIP: core plugin unreachable` message to
+stderr and exits `75` (`EX_TEMPFAIL`) instead of running every case
+against an unresolvable gate and reporting misleading `FAIL`s. This is
+distinct from each runner's own dedicated missing-core test case above,
+which deliberately points `CLAUDE_PLUGIN_ROOT_CORE` at a nonexistent
+path for one subprocess call and still expects the gate's own `exit 2`
+fail-closed deny — that assertion is untouched by this pre-check.
+
 ```
 bash refactoring-legacy/hooks/tests/run-gate-tests.sh
 bash refactoring-legacy/hooks/tests/manifest-integrity-check.sh

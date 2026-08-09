@@ -4,6 +4,18 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATE_SCRIPT="$SCRIPT_DIR/../methodology-gate.sh"
 
+# test-env resolution (docs/specs/test-env-resolution.md, issue #551):
+# SKIP with exit 75 when core is unreachable, instead of running every
+# case against an unresolvable gate and reporting misleading FAILs.
+CORE_CANDIDATE="$SCRIPT_DIR/../../../core/hooks/lib/gate-lib.sh"
+if { [ -n "${CLAUDE_PLUGIN_ROOT_CORE:-}" ] && [ -s "$CLAUDE_PLUGIN_ROOT_CORE/hooks/lib/gate-lib.sh" ]; } \
+  || [ -s "$CORE_CANDIDATE" ]; then
+  :
+else
+  echo "SKIP: core plugin unreachable — unverifiable outside spawn env (see docs/specs/test-env-resolution.md, issue #551)" >&2
+  exit 75
+fi
+
 FAIL_COUNT=0
 TOTAL_COUNT=0
 
