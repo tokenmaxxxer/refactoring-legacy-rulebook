@@ -21,6 +21,8 @@ Research trail: Michael Feathers' characterization-test definition (Wikipedia's 
 
 6. **REMOVAL**: When the unit under test has dead branches that a diverse input sweep never reaches, do not write characterization tests to force coverage of unreachable code — pin down only the behavior the sweep actually observes, and let unreached branches surface for later dead-code removal instead of being certified as "intended behavior" by an artificial test. source: https://hackernoon.com/refactoring-021-remove-dead-code
 
+7. After capturing a characterization test, deliberately mutate the code under test to produce a different observed output, then confirm the test fails against that mutation before trusting it as a safety net — a captured test that merely runs without ever being observed to fail proves only that it executes, not that it actually pins the behavior it claims to guard.
+
 ## Open findings
 
 - No distinct academic/theory-layer source was located for characterization-test scope specifically (as opposed to testing methodology generally); the searches run this session surfaced only practitioner blogs and the Feathers/Fowler canon. A later pass should search software-testing-effectiveness literature (e.g. mutation-testing coverage studies) for an independent academic anchor.
